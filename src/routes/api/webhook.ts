@@ -20,10 +20,14 @@ function getStripe() {
 }
 
 function getSupabase() {
-  return createClient(
-    process.env.SUPABASE_URL as string,
-    process.env.SUPABASE_SERVICE_ROLE_KEY as string
-  );
+  const url = process.env.SUPABASE_URL as string;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
+  if (!url || !key) {
+    throw new Error("SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não configurados");
+  }
+  return createClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
 }
 
 function getMissingEnv() {
@@ -45,10 +49,12 @@ async function applySubscriptionToProfile({
   userId,
   subscription,
   customerId,
+  eventType,
 }: {
   userId: string;
   subscription: Stripe.Subscription;
   customerId?: string | Stripe.Customer | Stripe.DeletedCustomer | null;
+  eventType: string;
 }) {
   const supabase = getSupabase();
   const priceItem = subscription.items?.data?.[0];
@@ -60,7 +66,7 @@ async function applySubscriptionToProfile({
       ? customerId
       : typeof subscription.customer === "string"
         ? subscription.customer
-        : subscription.customer?.id;
+        : (subscription.customer as Stripe.Customer | null)?.id ?? null;
   const startAt = subscription.current_period_start
     ? new Date(subscription.current_period_start * 1000).toISOString()
     : null;
@@ -68,7 +74,17 @@ async function applySubscriptionToProfile({
     ? new Date(subscription.current_period_end * 1000).toISOString()
     : null;
 
-  const { error } = await supabase
+  console.log(`[webhook][${eventType}] Atualizando perfil para userId=${userId}`, {
+    subscription_status: "active",
+    stripe_customer_id: customer,
+    stripe_subscription_id: subscription.id,
+    stripe_price_id: priceId,
+    stripe_plan: plan,
+    subscription_start_at: startAt,
+    subscription_end_at: endAt,
+  });
+
+  const { error, count } = await supabase
     .from("profiles")
     .update({
       subscription_status: "active",
@@ -79,13 +95,42 @@ async function applySubscriptionToProfile({
       subscription_start_at: startAt,
       subscription_end_at: endAt,
     })
-    .eq("id", userId);
+    .eq("id", userId)
+    .select("id", { count: "exact", head: true });
 
-  if (error) throw error;
+  if (error) {
+    console.error(`[webhook][${eventType}] Erro ao atualizar status premium:`, error);
+    throw error;
+  }
+
+  if (count === 0) {
+    console.warn(`[webhook][${eventType}] Nenhum perfil encontrado para userId=${userId}. Tentando upsert...`);
+    const { error: upsertError } = await supabase
+      .from("profiles")
+      .upsert({
+        id: userId,
+        subscription_status: "active",
+        stripe_customer_id: customer ?? null,
+        stripe_subscription_id: subscription.id,
+        stripe_price_id: priceId,
+        stripe_plan: plan,
+        subscription_start_at: startAt,
+        subscription_end_at: endAt,
+      });
+
+    if (upsertError) {
+      console.error(`[webhook][${eventType}] Erro ao upsert status premium:`, upsertError);
+      throw upsertError;
+    }
+  }
+
+  console.log(`[webhook][${eventType}] Perfil atualizado com sucesso para userId=${userId}`);
 }
 
-async function cancelSubscriptionOnProfile(userId: string) {
+async function cancelSubscriptionOnProfile(userId: string, eventType: string) {
   const supabase = getSupabase();
+  console.log(`[webhook][${eventType}] Cancelando assinatura para userId=${userId}`);
+
   const { error } = await supabase
     .from("profiles")
     .update({
@@ -97,17 +142,27 @@ async function cancelSubscriptionOnProfile(userId: string) {
     })
     .eq("id", userId);
 
-  if (error) throw error;
+  if (error) {
+    console.error(`[webhook][${eventType}] Erro ao cancelar status premium:`, error);
+    throw error;
+  }
+
+  console.log(`[webhook][${eventType}] Assinatura cancelada para userId=${userId}`);
 }
 
-async function setStatus(userId: string, status: "active" | "inactive" | "past_due" | "cancelled") {
+async function setStatus(userId: string, status: "active" | "inactive" | "past_due" | "cancelled", eventType: string) {
   const supabase = getSupabase();
+  console.log(`[webhook][${eventType}] Definindo status=${status} para userId=${userId}`);
+
   const { error } = await supabase
     .from("profiles")
     .update({ subscription_status: status })
     .eq("id", userId);
 
-  if (error) throw error;
+  if (error) {
+    console.error(`[webhook][${eventType}] Erro ao atualizar status premium:`, error);
+    throw error;
+  }
 }
 
 export const Route = createFileRoute("/api/webhook")({
@@ -116,12 +171,13 @@ export const Route = createFileRoute("/api/webhook")({
       POST: async ({ request }) => {
         const missingEnv = getMissingEnv();
         if (missingEnv.length > 0) {
-          console.error("Missing webhook environment variables:", missingEnv);
+          console.error("[webhook] Variáveis de ambiente ausentes:", missingEnv);
           return json({ error: "Webhook configuration incomplete", missingEnv }, 500);
         }
 
         const signature = request.headers.get("stripe-signature");
         if (!signature) {
+          console.error("[webhook] stripe-signature header ausente");
           return json({ error: "Missing Stripe signature" }, 400);
         }
 
@@ -134,9 +190,11 @@ export const Route = createFileRoute("/api/webhook")({
             process.env.STRIPE_WEBHOOK_SECRET as string
           );
         } catch (error) {
-          console.error("Webhook signature verification failed:", error);
+          console.error("[webhook] Falha na verificação da assinatura:", error);
           return json({ error: "Invalid signature" }, 400);
         }
+
+        console.log(`[webhook] Evento recebido: ${event.type} (id=${event.id})`);
 
         const stripe = getStripe();
         const obj = event.data.object;
@@ -146,7 +204,11 @@ export const Route = createFileRoute("/api/webhook")({
             case "checkout.session.completed": {
               const session = obj as Stripe.Checkout.Session;
               const userId = session.metadata?.userId;
-              if (!userId || !session.subscription) break;
+              console.log(`[webhook][checkout.session.completed] userId=${userId}, subscription=${session.subscription}`);
+              if (!userId || !session.subscription) {
+                console.warn("[webhook][checkout.session.completed] userId ou subscription ausente no metadata");
+                break;
+              }
 
               const subscription = await stripe.subscriptions.retrieve(
                 session.subscription as string,
@@ -156,6 +218,7 @@ export const Route = createFileRoute("/api/webhook")({
                 userId,
                 subscription,
                 customerId: session.customer,
+                eventType: event.type,
               });
               break;
             }
@@ -163,7 +226,11 @@ export const Route = createFileRoute("/api/webhook")({
             case "customer.subscription.updated": {
               const subscriptionEvent = obj as Stripe.Subscription;
               const userId = subscriptionEvent.metadata?.userId;
-              if (!userId) break;
+              console.log(`[webhook][customer.subscription.updated] userId=${userId}, status=${subscriptionEvent.status}`);
+              if (!userId) {
+                console.warn("[webhook][customer.subscription.updated] userId ausente no metadata");
+                break;
+              }
 
               const subscription = await stripe.subscriptions.retrieve(subscriptionEvent.id, {
                 expand: ["items.data.price"],
@@ -174,9 +241,10 @@ export const Route = createFileRoute("/api/webhook")({
                   userId,
                   subscription,
                   customerId: subscription.customer,
+                  eventType: event.type,
                 });
               } else if (subscription.status === "past_due") {
-                await setStatus(userId, "past_due");
+                await setStatus(userId, "past_due", event.type);
               }
               break;
             }
@@ -190,12 +258,17 @@ export const Route = createFileRoute("/api/webhook")({
                 { expand: ["items.data.price"] }
               );
               const userId = subscription.metadata?.userId;
-              if (!userId) break;
+              console.log(`[webhook][invoice.payment_succeeded] userId=${userId}`);
+              if (!userId) {
+                console.warn("[webhook][invoice.payment_succeeded] userId ausente no metadata da subscription");
+                break;
+              }
 
               await applySubscriptionToProfile({
                 userId,
                 subscription,
                 customerId: invoice.customer,
+                eventType: event.type,
               });
               break;
             }
@@ -206,26 +279,29 @@ export const Route = createFileRoute("/api/webhook")({
 
               const subscription = await stripe.subscriptions.retrieve(invoice.subscription as string);
               const userId = subscription.metadata?.userId;
+              console.log(`[webhook][invoice.payment_failed] userId=${userId}`);
               if (!userId) break;
 
-              await setStatus(userId, "past_due");
+              await setStatus(userId, "past_due", event.type);
               break;
             }
 
             case "customer.subscription.deleted": {
               const subscription = obj as Stripe.Subscription;
               const userId = subscription.metadata?.userId;
+              console.log(`[webhook][customer.subscription.deleted] userId=${userId}`);
               if (!userId) break;
 
-              await cancelSubscriptionOnProfile(userId);
+              await cancelSubscriptionOnProfile(userId, event.type);
               break;
             }
 
             default:
+              console.log(`[webhook] Evento ignorado: ${event.type}`);
               break;
           }
         } catch (error) {
-          console.error(`Error processing event ${event.type}:`, error);
+          console.error(`[webhook] Erro ao processar evento ${event.type}:`, error);
           return json({ error: "Database write failed. Stripe will retry." }, 500);
         }
 
