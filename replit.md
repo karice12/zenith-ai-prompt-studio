@@ -8,7 +8,7 @@ A React-based AI prompt engineering dashboard built with TanStack Start (SSR), T
 - **Routing:** TanStack Router (file-based, under `src/routes/`)
 - **Styling:** Tailwind CSS v4 + shadcn/ui (Radix UI primitives)
 - **Build Tool:** Vite 7
-- **Package Manager:** npm (node_modules present; bun.lockb also present from original)
+- **Package Manager:** npm
 - **Runtime:** Node.js 22
 - **Language:** TypeScript
 
@@ -18,9 +18,9 @@ A React-based AI prompt engineering dashboard built with TanStack Start (SSR), T
 - `src/routes/api/webhook.ts` — TanStack Start server route for Stripe webhook subscription updates
 - `src/components/` — Reusable UI components (shadcn/ui in `ui/`, feature components at root)
 - `src/hooks/` — Custom React hooks
-- `src/lib/` — Utilities (Tailwind class merging, etc.)
+- `src/lib/` — Utilities (Supabase client, Tailwind class merging)
 - `src/styles.css` — Global styles and Tailwind imports
-- `src/routeTree.gen.ts` — Auto-generated route tree
+- `src/routeTree.gen.ts` — Auto-generated route tree (do not edit manually)
 
 ## Key Routes
 - `/` — Landing page
@@ -36,6 +36,22 @@ A React-based AI prompt engineering dashboard built with TanStack Start (SSR), T
 - **Dev server:** `npm run dev` → port 5000
 - **Build:** `npm run build`
 - **Host:** `0.0.0.0` with `allowedHosts: true` for Replit proxy compatibility
+
+## Environment Variables Required
+- `VITE_SUPABASE_URL` — Supabase project URL (client-side)
+- `VITE_SUPABASE_ANON_KEY` — Supabase anon key (client-side)
+- `SUPABASE_URL` — Supabase project URL (server-side)
+- `SUPABASE_SERVICE_ROLE_KEY` — Supabase service role key (server-side, keep secret)
+- `STRIPE_SECRET_KEY` — Stripe secret key (server-side)
+- `STRIPE_WEBHOOK_SECRET` — Stripe webhook signing secret (server-side)
+- `STRIPE_PRICE_MONTHLY` — (optional) Pre-created Stripe price ID for monthly plan
+- `STRIPE_PRICE_ANNUAL` — (optional) Pre-created Stripe price ID for annual plan
+- `NEXT_PUBLIC_APP_URL` — Public URL of the app (used for Stripe redirect URLs)
+- `GEMINI_API_KEY` — Google Gemini API key for prompt generation
+
+## Vite Config
+Standard TanStack Start + Vite config (migrated from Lovable-specific config).
+Uses `@tanstack/react-start/plugin/vite`, `@tailwindcss/vite`, `vite-tsconfig-paths`, and `@vitejs/plugin-react`.
 
 ## Deployment
 - **Target:** Static site
