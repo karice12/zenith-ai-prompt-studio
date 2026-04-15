@@ -105,31 +105,47 @@ async function findOrCreateStripeCustomer({
   userId: string;
   email: string;
 }) {
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("stripe_customer_id")
-    .eq("id", userId)
-    .maybeSingle();
+  try {
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("stripe_customer_id")
+      .eq("id", userId)
+      .maybeSingle();
 
-  if (profileError && profileError.code !== "PGRST205") {
-    throw profileError;
+    if (!profileError && profile?.stripe_customer_id) {
+      console.log("[checkout] Usando stripe_customer_id existente:", profile.stripe_customer_id);
+      return profile.stripe_customer_id as string;
+    }
+
+    if (profileError) {
+      console.warn("[checkout] Falha ao buscar perfil (continuando sem cache):", profileError.message);
+    }
+  } catch (err) {
+    console.warn("[checkout] Exceção ao buscar perfil (continuando sem cache):", err);
   }
 
-  if (profile?.stripe_customer_id) {
-    return profile.stripe_customer_id as string;
-  }
+  const stripeKeyMasked = process.env.STRIPE_SECRET_KEY
+    ? `${process.env.STRIPE_SECRET_KEY.slice(0, 7)}...${process.env.STRIPE_SECRET_KEY.slice(-4)}`
+    : "AUSENTE";
+  console.log("[checkout] Criando Stripe customer — email:", email, "userId:", userId, "stripe_key:", stripeKeyMasked);
 
   const customer = await stripe.customers.create({
     email,
     metadata: { userId },
   });
 
-  const { error: updateError } = await supabase
-    .from("profiles")
-    .upsert({ id: userId, stripe_customer_id: customer.id }, { onConflict: "id" });
+  console.log("[checkout] Stripe customer criado:", customer.id, "para userId:", userId);
 
-  if (updateError) {
-    console.error("[checkout] Falha ao salvar stripe_customer_id no profile:", updateError);
+  try {
+    const { error: updateError } = await supabase
+      .from("profiles")
+      .upsert({ id: userId, stripe_customer_id: customer.id }, { onConflict: "id" });
+
+    if (updateError) {
+      console.warn("[checkout] Falha ao salvar stripe_customer_id (não bloqueante):", updateError.message);
+    }
+  } catch (err) {
+    console.warn("[checkout] Exceção ao salvar stripe_customer_id (não bloqueante):", err);
   }
 
   return customer.id;
@@ -149,7 +165,8 @@ export const Route = createFileRoute("/api/checkout")({
         const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
         const stripeKey = process.env.STRIPE_SECRET_KEY;
 
-        console.log("[checkout] Env check — SUPABASE_URL:", !!supabaseUrl, "SERVICE_KEY:", !!serviceKey, "STRIPE_KEY:", !!stripeKey);
+        const maskedKey = serviceKey ? `${serviceKey.slice(0, 12)}...${serviceKey.slice(-6)}` : "AUSENTE";
+        console.log("[checkout] Env check — SUPABASE_URL:", !!supabaseUrl, "SERVICE_KEY:", maskedKey, "STRIPE_KEY:", !!stripeKey);
 
         if (!supabaseUrl || !serviceKey || !stripeKey) {
           const missing = [
