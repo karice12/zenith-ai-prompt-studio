@@ -1,27 +1,40 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { Zap, Copy, Check } from "lucide-react";
+import { Zap, Copy, Check, Scissors, ShoppingCart, Heart, GraduationCap, Landmark, UtensilsCrossed, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export const Route = createFileRoute("/dashboard/generate")({
   component: GeneratePage,
 });
 
+const NICHES = [
+  { value: "higiene-beleza", label: "Higiene e Beleza", hint: "Barbeiro, Salão", icon: Scissors },
+  { value: "ecommerce", label: "E-commerce e Vendas", hint: "Shopify, Mercado Livre", icon: ShoppingCart },
+  { value: "saude", label: "Saúde e Bem-estar", hint: "Clínicas, Consultórios", icon: Heart },
+  { value: "educacao", label: "Educação e Info-produtos", hint: "", icon: GraduationCap },
+  { value: "financeiro", label: "Serviços Financeiros", hint: "", icon: Landmark },
+  { value: "gastronomia", label: "Gastronomia", hint: "Restaurantes, Delivery", icon: UtensilsCrossed },
+  { value: "outros", label: "Outros", hint: "Campo livre", icon: MoreHorizontal },
+];
+
 function GeneratePage() {
   const [objective, setObjective] = useState("");
   const [stack, setStack] = useState("");
+  const [niche, setNiche] = useState("");
+  const [customNiche, setCustomNiche] = useState("");
   const [detail, setDetail] = useState("medium");
   const [platform, setPlatform] = useState("lovable");
   const [output, setOutput] = useState("");
   const [copied, setCopied] = useState(false);
 
+  const resolvedNiche = niche === "outros" ? customNiche : NICHES.find(n => n.value === niche)?.label || "";
+
   const handleGenerate = () => {
-    // Simulated output
-    const prompt = `[${platform.toUpperCase()}] Objetivo: ${objective}\nStack: ${stack}\nNível de Detalhe: ${detail}\n\nAtue como um engenheiro de software sênior. Crie ${objective} utilizando ${stack}. Siga boas práticas, código limpo e componentizado. Implemente tratamento de erros e responsividade.`;
+    const nicheText = resolvedNiche ? `\nNicho/Setor: ${resolvedNiche}` : "";
+    const prompt = `[${platform.toUpperCase()}] Objetivo: ${objective}\nStack: ${stack}${nicheText}\nNível de Detalhe: ${detail}\n\nAtue como um engenheiro de software sênior. Crie ${objective} utilizando ${stack}. Siga boas práticas, código limpo e componentizado. Implemente tratamento de erros e responsividade.${resolvedNiche ? ` O projeto é voltado para o setor de ${resolvedNiche}.` : ""}`;
     setOutput(prompt);
   };
 
@@ -62,6 +75,35 @@ function GeneratePage() {
           <div className="space-y-2">
             <Label>Stack Tecnológica</Label>
             <Input placeholder="Ex: React, TypeScript, Tailwind" value={stack} onChange={(e) => setStack(e.target.value)} />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Nicho / Setor</Label>
+            <Select value={niche} onValueChange={(v) => { setNiche(v); if (v !== "outros") setCustomNiche(""); }}>
+              <SelectTrigger><SelectValue placeholder="Selecione o nicho" /></SelectTrigger>
+              <SelectContent>
+                {NICHES.map((n) => {
+                  const Icon = n.icon;
+                  return (
+                    <SelectItem key={n.value} value={n.value}>
+                      <span className="flex items-center gap-2">
+                        <Icon className="h-4 w-4 text-[var(--neon-purple)] shrink-0" />
+                        <span>{n.label}</span>
+                        {n.hint && <span className="text-muted-foreground text-xs">({n.hint})</span>}
+                      </span>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+            {niche === "outros" && (
+              <Input
+                placeholder="Digite seu nicho..."
+                value={customNiche}
+                onChange={(e) => setCustomNiche(e.target.value)}
+                className="mt-2"
+              />
+            )}
           </div>
 
           <div className="space-y-2">
