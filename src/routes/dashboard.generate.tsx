@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAuth } from "@/contexts/AuthContext";
 
 export const Route = createFileRoute("/dashboard/generate")({
   component: GeneratePage,
@@ -29,13 +30,53 @@ function GeneratePage() {
   const [platform, setPlatform] = useState("lovable");
   const [output, setOutput] = useState("");
   const [copied, setCopied] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const { getToken } = useAuth();
 
   const resolvedNiche = niche === "outros" ? customNiche : NICHES.find(n => n.value === niche)?.label || "";
 
-  const handleGenerate = () => {
-    const nicheText = resolvedNiche ? `\nNicho/Setor: ${resolvedNiche}` : "";
-    const prompt = `[${platform.toUpperCase()}] Objetivo: ${objective}\nStack: ${stack}${nicheText}\nNível de Detalhe: ${detail}\n\nAtue como um engenheiro de software sênior. Crie ${objective} utilizando ${stack}. Siga boas práticas, código limpo e componentizado. Implemente tratamento de erros e responsividade.${resolvedNiche ? ` O projeto é voltado para o setor de ${resolvedNiche}.` : ""}`;
-    setOutput(prompt);
+  const handleGenerate = async () => {
+    setApiError(null);
+    setGenerating(true);
+
+    const token = getToken();
+
+    if (!token) {
+      setApiError("Sessão expirada. Faça login novamente.");
+      setGenerating(false);
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          platform,
+          niche: resolvedNiche || "Geral",
+          goal: `${objective} — Nível de detalhe: ${detail}`,
+          stack,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setApiError(data.error || "Erro ao gerar prompt.");
+        setGenerating(false);
+        return;
+      }
+
+      setOutput(data.prompt);
+    } catch {
+      setApiError("Erro de conexão. Tente novamente.");
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const handleCopy = async () => {
@@ -118,9 +159,13 @@ function GeneratePage() {
             </Select>
           </div>
 
-          <Button variant="hero" className="w-full" onClick={handleGenerate} disabled={!objective}>
+          {apiError && (
+            <p className="text-sm text-destructive">{apiError}</p>
+          )}
+
+          <Button variant="hero" className="w-full" onClick={handleGenerate} disabled={!objective || generating}>
             <Zap className="h-4 w-4" />
-            Gerar Prompt
+            {generating ? "Gerando..." : "Gerar Prompt"}
           </Button>
         </div>
 

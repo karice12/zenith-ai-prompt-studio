@@ -1,9 +1,17 @@
-import { createFileRoute, Outlet, Link, useLocation } from "@tanstack/react-router";
-import { Home, LayoutTemplate, FileText, CreditCard, Zap, Menu, X } from "lucide-react";
+import { createFileRoute, Outlet, Link, useLocation, redirect } from "@tanstack/react-router";
+import { Home, LayoutTemplate, FileText, CreditCard, Zap, Menu, X, LogOut } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/dashboard")({
+  beforeLoad: async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      throw redirect({ to: "/login" });
+    }
+  },
   head: () => ({
     meta: [
       { title: "Dashboard — Zenith AI" },
@@ -23,6 +31,7 @@ const navItems = [
 function DashboardLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
+  const { signOut } = useAuth();
 
   const isActive = (to: string, exact: boolean) =>
     exact ? location.pathname === to : location.pathname.startsWith(to);
@@ -66,6 +75,15 @@ function DashboardLayout() {
             </Link>
           ))}
         </nav>
+        <div className="p-3 border-t border-sidebar-border">
+          <button
+            onClick={() => signOut()}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-sidebar-foreground hover:bg-sidebar-accent/50 transition-all w-full"
+          >
+            <LogOut className="h-4 w-4" />
+            Sair
+          </button>
+        </div>
       </aside>
 
       {/* Main */}

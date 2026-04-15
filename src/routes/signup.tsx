@@ -1,9 +1,10 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Zap, Mail, Lock, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAuth } from "@/contexts/AuthContext";
 
 export const Route = createFileRoute("/signup")({
   head: () => ({
@@ -19,10 +20,28 @@ function SignupPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const { signUp } = useAuth();
+  const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: integrate auth
+    setError(null);
+    setLoading(true);
+
+    const { error } = await signUp(email, password, name);
+
+    if (error) {
+      setError(error);
+      setLoading(false);
+      return;
+    }
+
+    setSuccess(true);
+    setLoading(false);
+    setTimeout(() => navigate({ to: "/dashboard" }), 2000);
   };
 
   return (
@@ -63,7 +82,16 @@ function SignupPage() {
               <Input id="password" type="password" placeholder="••••••••" className="pl-10" value={password} onChange={(e) => setPassword(e.target.value)} />
             </div>
           </div>
-          <Button variant="hero" className="w-full" type="submit">Criar Conta</Button>
+          {error && (
+            <p className="text-sm text-destructive text-center">{error}</p>
+          )}
+          {success && (
+            <p className="text-sm text-green-500 text-center">Conta criada! Redirecionando...</p>
+          )}
+
+          <Button variant="hero" className="w-full" type="submit" disabled={loading}>
+            {loading ? "Criando conta..." : "Criar Conta"}
+          </Button>
         </form>
 
         <p className="text-sm text-muted-foreground text-center mt-6">

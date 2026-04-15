@@ -1,9 +1,10 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { Zap, Mail, Lock, User } from "lucide-react";
+import { Zap, Mail, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAuth } from "@/contexts/AuthContext";
 
 export const Route = createFileRoute("/login")({
   head: () => ({
@@ -18,10 +19,22 @@ export const Route = createFileRoute("/login")({
 function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const { signIn } = useAuth();
+  const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: integrate auth
+    setError(null);
+    setLoading(true);
+    const { error } = await signIn(email, password);
+    if (error) {
+      setError(error);
+      setLoading(false);
+      return;
+    }
+    navigate({ to: "/dashboard" });
   };
 
   return (
@@ -55,7 +68,13 @@ function LoginPage() {
               <Input id="password" type="password" placeholder="••••••••" className="pl-10" value={password} onChange={(e) => setPassword(e.target.value)} />
             </div>
           </div>
-          <Button variant="hero" className="w-full" type="submit">Entrar</Button>
+          {error && (
+            <p className="text-sm text-destructive text-center">{error}</p>
+          )}
+
+          <Button variant="hero" className="w-full" type="submit" disabled={loading}>
+            {loading ? "Entrando..." : "Entrar"}
+          </Button>
         </form>
 
         <p className="text-sm text-muted-foreground text-center mt-6">
