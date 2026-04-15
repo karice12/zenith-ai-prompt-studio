@@ -26,7 +26,7 @@ function SubscriptionPage() {
     setError(null);
     setLoadingPlan(plan);
 
-    const token = getToken();
+    const token = await getToken();
     if (!token || !user?.email) {
       setError("Sessão expirada. Faça login novamente.");
       setLoadingPlan(null);

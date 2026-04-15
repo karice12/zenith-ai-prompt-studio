@@ -9,7 +9,7 @@ interface AuthContextValue {
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (email: string, password: string, name: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
-  getToken: () => string | null;
+  getToken: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -26,9 +26,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
+      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
@@ -51,11 +54,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (data.user) {
       const { error: profileError } = await supabase
         .from("profiles")
-        .upsert({
-          id: data.user.id,
-          email: data.user.email,
-          subscription_status: "inactive",
-        }, { onConflict: "id" });
+        .upsert(
+          { id: data.user.id, email: data.user.email, subscription_status: "inactive" },
+          { onConflict: "id" }
+        );
 
       if (profileError) {
         console.error("Profile creation error:", profileError.message);
@@ -69,7 +71,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
   };
 
-  const getToken = () => session?.access_token ?? null;
+  const getToken = async (): Promise<string | null> => {
+    const { data, error } = await supabase.auth.getSession();
+    if (error || !data.session) return null;
+    return data.session.access_token;
+  };
 
   return (
     <AuthContext.Provider value={{ session, user, loading, signIn, signUp, signOut, getToken }}>

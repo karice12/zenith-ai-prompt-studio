@@ -52,7 +52,7 @@ function GeneratePage() {
     setApiError(null);
     setGenerating(true);
 
-    const token = getToken();
+    const token = await getToken();
 
     if (!token) {
       setApiError("Sessão expirada. Faça login novamente.");

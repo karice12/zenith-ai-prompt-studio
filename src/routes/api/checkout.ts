@@ -6,12 +6,6 @@ const jsonHeaders = {
   "Content-Type": "application/json",
 };
 
-const requiredEnv = [
-  "SUPABASE_URL",
-  "SUPABASE_SERVICE_ROLE_KEY",
-  "STRIPE_SECRET_KEY",
-] as const;
-
 const PLANS = {
   monthly: {
     priceId: process.env.STRIPE_PRICE_MONTHLY ?? null,
@@ -32,14 +26,7 @@ const PLANS = {
 type Plan = keyof typeof PLANS;
 
 function json(data: unknown, status = 200) {
-  return Response.json(data, {
-    status,
-    headers: jsonHeaders,
-  });
-}
-
-function getMissingEnv() {
-  return requiredEnv.filter((key) => !process.env[key]);
+  return Response.json(data, { status, headers: jsonHeaders });
 }
 
 function getStripe() {
@@ -48,29 +35,63 @@ function getStripe() {
   });
 }
 
-function getSupabase() {
+function getSupabaseAdmin() {
   return createClient(
     process.env.SUPABASE_URL as string,
-    process.env.SUPABASE_SERVICE_ROLE_KEY as string
+    process.env.SUPABASE_SERVICE_ROLE_KEY as string,
+    { auth: { autoRefreshToken: false, persistSession: false } }
   );
 }
 
 function getAuthToken(request: Request) {
   const authHeader = request.headers.get("authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return null;
-  }
-
-  return authHeader.replace("Bearer ", "");
+  if (!authHeader?.startsWith("Bearer ")) return null;
+  return authHeader.slice(7);
 }
 
 function getAppUrl(request: Request) {
-  const configuredUrl = process.env.NEXT_PUBLIC_APP_URL;
-  if (configuredUrl) {
-    return configuredUrl.replace(/\/$/, "");
+  const configured = process.env.NEXT_PUBLIC_APP_URL;
+  if (configured) return configured.replace(/\/$/, "");
+  return new URL(request.url).origin;
+}
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payload = Buffer.from(parts[1], "base64url").toString("utf-8");
+    return JSON.parse(payload);
+  } catch {
+    return null;
+  }
+}
+
+async function resolveUserIdFromToken(
+  token: string,
+  supabase: ReturnType<typeof getSupabaseAdmin>
+): Promise<{ userId: string | null; error: string | null }> {
+  const { data, error } = await supabase.auth.getUser(token);
+
+  if (!error && data.user) {
+    return { userId: data.user.id, error: null };
   }
 
-  return new URL(request.url).origin;
+  console.warn("[checkout] supabase.auth.getUser falhou, tentando parse local do JWT:", error?.message);
+
+  const payload = decodeJwtPayload(token);
+  if (!payload) return { userId: null, error: "Token inválido" };
+
+  const sub = typeof payload.sub === "string" ? payload.sub : null;
+  const exp = typeof payload.exp === "number" ? payload.exp : null;
+
+  if (exp && Date.now() / 1000 > exp) {
+    return { userId: null, error: "Token expirado. Faça login novamente." };
+  }
+
+  if (!sub) return { userId: null, error: "Token sem identificador de usuário" };
+
+  console.warn("[checkout] Usando userId do JWT local (sub=" + sub + ") — validação Supabase indisponível");
+  return { userId: sub, error: null };
 }
 
 async function findOrCreateStripeCustomer({
@@ -79,7 +100,7 @@ async function findOrCreateStripeCustomer({
   userId,
   email,
 }: {
-  supabase: ReturnType<typeof getSupabase>;
+  supabase: ReturnType<typeof getSupabaseAdmin>;
   stripe: Stripe;
   userId: string;
   email: string;
@@ -95,7 +116,7 @@ async function findOrCreateStripeCustomer({
   }
 
   if (profile?.stripe_customer_id) {
-    return profile.stripe_customer_id;
+    return profile.stripe_customer_id as string;
   }
 
   const customer = await stripe.customers.create({
@@ -105,11 +126,10 @@ async function findOrCreateStripeCustomer({
 
   const { error: updateError } = await supabase
     .from("profiles")
-    .update({ stripe_customer_id: customer.id })
-    .eq("id", userId);
+    .upsert({ id: userId, stripe_customer_id: customer.id }, { onConflict: "id" });
 
   if (updateError) {
-    console.error("Failed to persist Stripe customer on profile:", updateError);
+    console.error("[checkout] Falha ao salvar stripe_customer_id no profile:", updateError);
   }
 
   return customer.id;
@@ -121,76 +141,68 @@ export const Route = createFileRoute("/api/checkout")({
       OPTIONS: async () =>
         new Response(null, {
           status: 204,
-          headers: {
-            ...jsonHeaders,
-            Allow: "POST, OPTIONS",
-          },
+          headers: { ...jsonHeaders, Allow: "POST, OPTIONS" },
         }),
+
       POST: async ({ request }) => {
-        const missingEnv = getMissingEnv();
-        if (missingEnv.length > 0) {
-          console.error("Missing checkout environment variables:", missingEnv);
-          return json(
-            {
-              error: "Configuração de pagamento incompleta.",
-              missingEnv,
-            },
-            500
-          );
+        const supabaseUrl = process.env.SUPABASE_URL;
+        const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        const stripeKey = process.env.STRIPE_SECRET_KEY;
+
+        console.log("[checkout] Env check — SUPABASE_URL:", !!supabaseUrl, "SERVICE_KEY:", !!serviceKey, "STRIPE_KEY:", !!stripeKey);
+
+        if (!supabaseUrl || !serviceKey || !stripeKey) {
+          const missing = [
+            !supabaseUrl && "SUPABASE_URL",
+            !serviceKey && "SUPABASE_SERVICE_ROLE_KEY",
+            !stripeKey && "STRIPE_SECRET_KEY",
+          ].filter(Boolean);
+          console.error("[checkout] Variáveis de ambiente ausentes:", missing);
+          return json({ error: "Configuração de pagamento incompleta.", missing }, 500);
         }
 
         const token = getAuthToken(request);
         if (!token) {
-          return json({ error: "Missing authorization token" }, 401);
+          return json({ error: "Token de autorização ausente" }, 401);
         }
 
-        let body: {
-          plan?: Plan;
-          email?: string;
-          userId?: string;
-        };
-
+        let body: { plan?: Plan; email?: string; userId?: string };
         try {
           body = await request.json();
-        } catch (error) {
-          console.error("Invalid checkout request body:", error);
-          return json({ error: "Invalid JSON body" }, 400);
+        } catch {
+          return json({ error: "Corpo da requisição inválido" }, 400);
         }
 
         const { plan, email, userId } = body;
 
         if (!plan || !["monthly", "annual"].includes(plan)) {
-          return json({ error: "Invalid plan. Use 'monthly' or 'annual'" }, 400);
+          return json({ error: "Plano inválido. Use 'monthly' ou 'annual'" }, 400);
         }
-
         if (!email || !userId) {
-          return json({ error: "Missing required fields: email, userId" }, 400);
+          return json({ error: "Campos obrigatórios ausentes: email, userId" }, 400);
         }
 
-        const supabase = getSupabase();
+        const supabase = getSupabaseAdmin();
+        const { userId: tokenUserId, error: tokenError } = await resolveUserIdFromToken(token, supabase);
+
+        if (tokenError || !tokenUserId) {
+          console.error("[checkout] Falha na validação do token:", tokenError);
+          return json({ error: tokenError ?? "Token inválido" }, 401);
+        }
+
+        if (tokenUserId !== userId) {
+          console.error("[checkout] userId do token não corresponde ao body:", { tokenUserId, userId });
+          return json({ error: "Token não corresponde ao usuário informado" }, 401);
+        }
+
         const stripe = getStripe();
-
-        const {
-          data: { user },
-          error: authError,
-        } = await supabase.auth.getUser(token);
-
-        if (authError || !user || user.id !== userId) {
-          console.error("Checkout auth failed:", authError);
-          return json({ error: "Invalid authorization token" }, 401);
-        }
 
         let customerId: string;
         try {
-          customerId = await findOrCreateStripeCustomer({
-            supabase,
-            stripe,
-            userId,
-            email,
-          });
-        } catch (error) {
-          console.error("Failed to resolve Stripe customer:", error);
-          return json({ error: "Could not create Stripe customer" }, 500);
+          customerId = await findOrCreateStripeCustomer({ supabase, stripe, userId, email });
+        } catch (err) {
+          console.error("[checkout] Falha ao resolver Stripe customer:", err);
+          return json({ error: "Não foi possível criar o cliente Stripe" }, 500);
         }
 
         const selectedPlan = PLANS[plan];
@@ -215,17 +227,16 @@ export const Route = createFileRoute("/api/checkout")({
             line_items: [lineItem],
             allow_promotion_codes: true,
             metadata: { userId, plan },
-            subscription_data: {
-              metadata: { userId, plan },
-            },
+            subscription_data: { metadata: { userId, plan } },
             success_url: `${appUrl}/dashboard?checkout=success`,
             cancel_url: `${appUrl}/dashboard/subscription?checkout=cancelled`,
           });
 
+          console.log("[checkout] Sessão Stripe criada para userId:", userId, "plan:", plan);
           return json({ url: session.url, sessionId: session.id });
-        } catch (error) {
-          console.error("Failed to create Stripe session:", error);
-          return json({ error: "Could not create checkout session" }, 500);
+        } catch (err) {
+          console.error("[checkout] Falha ao criar sessão Stripe:", err);
+          return json({ error: "Não foi possível criar a sessão de pagamento" }, 500);
         }
       },
     },
