@@ -37,3 +37,8 @@ externalPort = 80
 deploymentTarget = "static"
 build = ["npm", "run", "build"]
 publicDir = "dist/client"
+
+[userenv]
+
+[userenv.shared]
+NEXT_PUBLIC_APP_URL = "https://f14e1cab-854c-4ec9-9825-d0978eec5998-00-22b07uxtj5qff.worf.replit.dev"
