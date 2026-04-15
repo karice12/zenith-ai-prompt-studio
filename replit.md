@@ -36,6 +36,7 @@ A React-based AI prompt engineering dashboard built with TanStack Start (SSR), T
 - **Dev server:** `npm run dev` → port 5000
 - **Build:** `npm run build`
 - **Host:** `0.0.0.0` with `allowedHosts: true` for Replit proxy compatibility
+- Missing client Supabase settings now disable auth-dependent features with a clear message instead of crashing the preview.
 
 ## Environment Variables Required
 - `VITE_SUPABASE_URL` — Supabase project URL (client-side)

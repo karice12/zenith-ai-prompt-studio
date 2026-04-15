@@ -103,7 +103,10 @@ function PromptsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user) return;
+    if (!supabase || !user) {
+      setLoading(false);
+      return;
+    }
 
     let cancelled = false;
 

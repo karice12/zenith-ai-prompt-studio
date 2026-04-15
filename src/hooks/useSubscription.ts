@@ -16,7 +16,7 @@ export function useSubscription(): UseSubscriptionResult {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) {
+    if (!supabase || !user) {
       setStatus(null);
       setLoading(false);
       return;
