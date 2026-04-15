@@ -18,6 +18,7 @@ import { Route as DashboardTemplatesRouteImport } from './routes/dashboard.templ
 import { Route as DashboardSubscriptionRouteImport } from './routes/dashboard.subscription'
 import { Route as DashboardPromptsRouteImport } from './routes/dashboard.prompts'
 import { Route as DashboardGenerateRouteImport } from './routes/dashboard.generate'
+import { Route as ApiWebhookRouteImport } from './routes/api/webhook'
 import { Route as ApiCheckoutRouteImport } from './routes/api/checkout'
 
 const SignupRoute = SignupRouteImport.update({
@@ -65,6 +66,11 @@ const DashboardGenerateRoute = DashboardGenerateRouteImport.update({
   path: '/generate',
   getParentRoute: () => DashboardRoute,
 } as any)
+const ApiWebhookRoute = ApiWebhookRouteImport.update({
+  id: '/api/webhook',
+  path: '/api/webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCheckoutRoute = ApiCheckoutRouteImport.update({
   id: '/api/checkout',
   path: '/api/checkout',
@@ -77,6 +83,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/api/checkout': typeof ApiCheckoutRoute
+  '/api/webhook': typeof ApiWebhookRoute
   '/dashboard/generate': typeof DashboardGenerateRoute
   '/dashboard/prompts': typeof DashboardPromptsRoute
   '/dashboard/subscription': typeof DashboardSubscriptionRoute
@@ -88,6 +95,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/api/checkout': typeof ApiCheckoutRoute
+  '/api/webhook': typeof ApiWebhookRoute
   '/dashboard/generate': typeof DashboardGenerateRoute
   '/dashboard/prompts': typeof DashboardPromptsRoute
   '/dashboard/subscription': typeof DashboardSubscriptionRoute
@@ -101,6 +109,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/api/checkout': typeof ApiCheckoutRoute
+  '/api/webhook': typeof ApiWebhookRoute
   '/dashboard/generate': typeof DashboardGenerateRoute
   '/dashboard/prompts': typeof DashboardPromptsRoute
   '/dashboard/subscription': typeof DashboardSubscriptionRoute
@@ -115,6 +124,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/api/checkout'
+    | '/api/webhook'
     | '/dashboard/generate'
     | '/dashboard/prompts'
     | '/dashboard/subscription'
@@ -126,6 +136,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/api/checkout'
+    | '/api/webhook'
     | '/dashboard/generate'
     | '/dashboard/prompts'
     | '/dashboard/subscription'
@@ -138,6 +149,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/api/checkout'
+    | '/api/webhook'
     | '/dashboard/generate'
     | '/dashboard/prompts'
     | '/dashboard/subscription'
@@ -151,6 +163,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
   ApiCheckoutRoute: typeof ApiCheckoutRoute
+  ApiWebhookRoute: typeof ApiWebhookRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -218,6 +231,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardGenerateRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/api/webhook': {
+      id: '/api/webhook'
+      path: '/api/webhook'
+      fullPath: '/api/webhook'
+      preLoaderRoute: typeof ApiWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/checkout': {
       id: '/api/checkout'
       path: '/api/checkout'
@@ -254,6 +274,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
   ApiCheckoutRoute: ApiCheckoutRoute,
+  ApiWebhookRoute: ApiWebhookRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

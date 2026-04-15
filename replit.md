@@ -15,6 +15,7 @@ A React-based AI prompt engineering dashboard built with TanStack Start (SSR), T
 ## Project Structure
 - `src/routes/` — File-based routes (root, login, signup, dashboard and nested routes)
 - `src/routes/api/checkout.ts` — TanStack Start server route for Stripe checkout sessions
+- `src/routes/api/webhook.ts` — TanStack Start server route for Stripe webhook subscription updates
 - `src/components/` — Reusable UI components (shadcn/ui in `ui/`, feature components at root)
 - `src/hooks/` — Custom React hooks
 - `src/lib/` — Utilities (Tailwind class merging, etc.)

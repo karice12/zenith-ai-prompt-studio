@@ -88,9 +88,9 @@ async function findOrCreateStripeCustomer({
     .from("profiles")
     .select("stripe_customer_id")
     .eq("id", userId)
-    .single();
+    .maybeSingle();
 
-  if (profileError) {
+  if (profileError && profileError.code !== "PGRST205") {
     throw profileError;
   }
 
@@ -109,7 +109,7 @@ async function findOrCreateStripeCustomer({
     .eq("id", userId);
 
   if (updateError) {
-    throw updateError;
+    console.error("Failed to persist Stripe customer on profile:", updateError);
   }
 
   return customer.id;
