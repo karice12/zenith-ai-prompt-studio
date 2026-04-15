@@ -37,6 +37,7 @@ function SubscriptionPage() {
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: {
+          Accept: "application/json",
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
@@ -47,16 +48,29 @@ function SubscriptionPage() {
         }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        setError(data.error || "Não foi possível criar a sessão de pagamento.");
+        console.error("Checkout API error:", {
+          status: res.status,
+          statusText: res.statusText,
+          response: data,
+        });
+        setError(data?.error || "Não foi possível criar a sessão de pagamento.");
+        setLoadingPlan(null);
+        return;
+      }
+
+      if (!data?.url) {
+        console.error("Checkout API returned no redirect URL:", data);
+        setError("A API de pagamento não retornou a URL do checkout.");
         setLoadingPlan(null);
         return;
       }
 
       window.location.href = data.url;
-    } catch {
+    } catch (error) {
+      console.error(error);
       setError("Erro de conexão. Verifique sua internet e tente novamente.");
       setLoadingPlan(null);
     }
