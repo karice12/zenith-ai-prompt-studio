@@ -35,6 +35,16 @@ function getStripe() {
   });
 }
 
+// Uses anon key — works for auth.getUser(jwt) validation
+function getSupabaseAuth() {
+  return createClient(
+    process.env.SUPABASE_URL as string,
+    (process.env.VITE_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY) as string,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+}
+
+// Uses service role key — for privileged DB operations
 function getSupabaseAdmin() {
   return createClient(
     process.env.SUPABASE_URL as string,
@@ -65,18 +75,20 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
   }
 }
 
-async function resolveUserIdFromToken(
-  token: string,
-  supabase: ReturnType<typeof getSupabaseAdmin>
-): Promise<{ userId: string | null; error: string | null }> {
-  const { data, error } = await supabase.auth.getUser(token);
-
-  if (!error && data.user) {
-    return { userId: data.user.id, error: null };
+async function resolveUserIdFromToken(token: string): Promise<{ userId: string | null; error: string | null }> {
+  // Primary: validate via Supabase using anon key (works as long as frontend auth works)
+  try {
+    const supabaseAuth = getSupabaseAuth();
+    const { data, error } = await supabaseAuth.auth.getUser(token);
+    if (!error && data.user) {
+      return { userId: data.user.id, error: null };
+    }
+    console.error("[checkout] auth.getUser falhou:", error?.message);
+  } catch (err) {
+    console.error("[checkout] Exceção em auth.getUser:", err);
   }
 
-  console.error("[checkout] supabase.auth.getUser falhou:", error?.message);
-
+  // Fallback: decode JWT locally to extract sub
   const payload = decodeJwtPayload(token);
   if (!payload) return { userId: null, error: "Token inválido" };
 
@@ -84,50 +96,57 @@ async function resolveUserIdFromToken(
   const exp = typeof payload.exp === "number" ? payload.exp : null;
 
   if (exp && Date.now() / 1000 > exp) {
-    return { userId: null, error: "Token expirado. Faça login novamente." };
+    return { userId: null, error: "Sessão expirada. Faça login novamente." };
   }
 
   if (!sub) return { userId: null, error: "Token sem identificador de usuário" };
 
+  console.warn("[checkout] Usando sub do JWT local:", sub);
   return { userId: sub, error: null };
 }
 
 async function findOrCreateStripeCustomer({
-  supabase,
   stripe,
   userId,
   email,
 }: {
-  supabase: ReturnType<typeof getSupabaseAdmin>;
   stripe: Stripe;
   userId: string;
   email: string;
 }) {
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("stripe_customer_id")
-    .eq("id", userId)
-    .maybeSingle();
+  // Try to find existing customer via admin DB — non-blocking if fails
+  try {
+    const supabaseAdmin = getSupabaseAdmin();
+    const { data: profile, error } = await supabaseAdmin
+      .from("profiles")
+      .select("stripe_customer_id")
+      .eq("id", userId)
+      .maybeSingle();
 
-  if (profileError && profileError.code !== "PGRST205") {
-    throw profileError;
+    if (!error && profile?.stripe_customer_id) {
+      return profile.stripe_customer_id as string;
+    }
+    if (error) {
+      console.warn("[checkout] DB lookup falhou (não bloqueante):", error.message);
+    }
+  } catch (err) {
+    console.warn("[checkout] Exceção no DB lookup (não bloqueante):", err);
   }
 
-  if (profile?.stripe_customer_id) {
-    return profile.stripe_customer_id as string;
-  }
-
+  // Create Stripe customer directly
   const customer = await stripe.customers.create({
     email,
     metadata: { userId },
   });
 
-  const { error: updateError } = await supabase
-    .from("profiles")
-    .upsert({ id: userId, stripe_customer_id: customer.id }, { onConflict: "id" });
-
-  if (updateError) {
-    console.error("[checkout] Falha ao salvar stripe_customer_id:", updateError.message);
+  // Try to persist — non-blocking
+  try {
+    const supabaseAdmin = getSupabaseAdmin();
+    await supabaseAdmin
+      .from("profiles")
+      .upsert({ id: userId, stripe_customer_id: customer.id }, { onConflict: "id" });
+  } catch (err) {
+    console.warn("[checkout] Falha ao persistir stripe_customer_id (não bloqueante):", err);
   }
 
   return customer.id;
@@ -144,17 +163,17 @@ export const Route = createFileRoute("/api/checkout")({
 
       POST: async ({ request }) => {
         const supabaseUrl = process.env.SUPABASE_URL;
-        const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        const anonKey = process.env.VITE_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY;
         const stripeKey = process.env.STRIPE_SECRET_KEY;
 
-        if (!supabaseUrl || !serviceKey || !stripeKey) {
+        if (!supabaseUrl || !anonKey || !stripeKey) {
           const missing = [
             !supabaseUrl && "SUPABASE_URL",
-            !serviceKey && "SUPABASE_SERVICE_ROLE_KEY",
+            !anonKey && "VITE_SUPABASE_ANON_KEY",
             !stripeKey && "STRIPE_SECRET_KEY",
           ].filter(Boolean);
-          console.error("[checkout] Variáveis de ambiente ausentes:", missing);
-          return json({ error: "Configuração de pagamento incompleta.", missing }, 500);
+          console.error("[checkout] Env ausente:", missing);
+          return json({ error: "Configuração incompleta.", missing }, 500);
         }
 
         const token = getAuthToken(request);
@@ -170,32 +189,29 @@ export const Route = createFileRoute("/api/checkout")({
         const { plan, email, userId } = body;
 
         if (!plan || !["monthly", "annual"].includes(plan)) {
-          return json({ error: "Plano inválido. Use 'monthly' ou 'annual'" }, 400);
+          return json({ error: "Plano inválido" }, 400);
         }
         if (!email || !userId) {
           return json({ error: "Campos obrigatórios ausentes: email, userId" }, 400);
         }
 
-        const supabase = getSupabaseAdmin();
-        const { userId: tokenUserId, error: tokenError } = await resolveUserIdFromToken(token, supabase);
+        const { userId: tokenUserId, error: tokenError } = await resolveUserIdFromToken(token);
 
         if (tokenError || !tokenUserId) {
-          console.error("[checkout] Falha na validação do token:", tokenError);
           return json({ error: tokenError ?? "Token inválido" }, 401);
         }
 
         if (tokenUserId !== userId) {
-          console.error("[checkout] userId do token não corresponde ao body");
-          return json({ error: "Token não corresponde ao usuário informado" }, 401);
+          return json({ error: "Token não corresponde ao usuário" }, 401);
         }
 
         const stripe = getStripe();
 
         let customerId: string;
         try {
-          customerId = await findOrCreateStripeCustomer({ supabase, stripe, userId, email });
+          customerId = await findOrCreateStripeCustomer({ stripe, userId, email });
         } catch (err) {
-          console.error("[checkout] Falha ao resolver Stripe customer:", err);
+          console.error("[checkout] Stripe customer falhou:", err);
           return json({ error: "Não foi possível criar o cliente Stripe" }, 500);
         }
 
@@ -228,7 +244,7 @@ export const Route = createFileRoute("/api/checkout")({
 
           return json({ url: session.url, sessionId: session.id });
         } catch (err) {
-          console.error("[checkout] Falha ao criar sessão Stripe:", err);
+          console.error("[checkout] Stripe session falhou:", err);
           return json({ error: "Não foi possível criar a sessão de pagamento" }, 500);
         }
       },
