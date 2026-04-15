@@ -9,6 +9,7 @@ A React-based AI prompt engineering dashboard built with TanStack Start (SSR), T
 - **Styling:** Tailwind CSS v4 + shadcn/ui (Radix UI primitives)
 - **Build Tool:** Vite 7
 - **Package Manager:** npm (node_modules present; bun.lockb also present from original)
+- **Runtime:** Node.js 22
 - **Language:** TypeScript
 
 ## Project Structure
@@ -32,7 +33,7 @@ A React-based AI prompt engineering dashboard built with TanStack Start (SSR), T
 ## Development
 - **Dev server:** `npm run dev` → port 5000
 - **Build:** `npm run build`
-- **Host:** `0.0.0.0` with `allowedHosts: 'all'` for Replit proxy compatibility
+- **Host:** `0.0.0.0` with `allowedHosts: true` for Replit proxy compatibility
 
 ## Deployment
 - **Target:** Static site
