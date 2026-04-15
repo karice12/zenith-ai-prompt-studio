@@ -1,11 +1,12 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import { Zap, Copy, Check, Scissors, ShoppingCart, Heart, GraduationCap, Landmark, UtensilsCrossed, MoreHorizontal } from "lucide-react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useState, useEffect } from "react";
+import { Zap, Copy, Check, Scissors, ShoppingCart, Heart, GraduationCap, Landmark, UtensilsCrossed, MoreHorizontal, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSubscription } from "@/hooks/useSubscription";
 
 export const Route = createFileRoute("/dashboard/generate")({
   component: GeneratePage,
@@ -33,6 +34,17 @@ function GeneratePage() {
   const [generating, setGenerating] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const { getToken } = useAuth();
+  const { isActive, loading: subLoading } = useSubscription();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!subLoading && !isActive) {
+      const timer = setTimeout(() => {
+        navigate({ to: "/dashboard/subscription" });
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [isActive, subLoading, navigate]);
 
   const resolvedNiche = niche === "outros" ? customNiche : NICHES.find(n => n.value === niche)?.label || "";
 
@@ -86,6 +98,40 @@ function GeneratePage() {
       setTimeout(() => setCopied(false), 2000);
     }
   };
+
+  if (subLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="h-8 w-8 rounded-full border-2 border-neon-purple border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isActive) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full min-h-[60vh] text-center px-4">
+        <div className="glass rounded-2xl p-10 glow-border-purple max-w-md w-full flex flex-col items-center gap-6">
+          <div className="h-16 w-16 rounded-full bg-neon-purple/15 flex items-center justify-center border border-neon-purple/30">
+            <Lock className="h-8 w-8 text-neon-purple" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold mb-2">Acesso restrito a assinantes</h2>
+            <p className="text-muted-foreground text-sm">
+              Esta funcionalidade é exclusiva para assinantes do Zenith AI.
+              Você será redirecionado para os planos em instantes...
+            </p>
+          </div>
+          <Button
+            variant="hero"
+            className="w-full"
+            onClick={() => navigate({ to: "/dashboard/subscription" })}
+          >
+            Ver Planos
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
