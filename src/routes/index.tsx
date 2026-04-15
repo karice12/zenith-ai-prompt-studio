@@ -1,26 +1,25 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { LandingHeader, HeroSection, PricingSection, Footer } from "@/components/landing-sections";
 
 export const Route = createFileRoute("/")({
-  component: Index,
+  head: () => ({
+    meta: [
+      { title: "Zenith AI — Seu Engenheiro de Prompt" },
+      { name: "description", content: "Engenharia de prompts avançada com IA. Gere prompts otimizados para Lovable, Replit, Claude e mais." },
+      { property: "og:title", content: "Zenith AI — Seu Engenheiro de Prompt" },
+      { property: "og:description", content: "A ciência por trás do prompt perfeito." },
+    ],
+  }),
+  component: LandingPage,
 });
 
-// IMPORTANT: Replace this placeholder. For sites with multiple pages (About, Services, Contact, etc.),
-// create separate route files (about.tsx, services.tsx, contact.tsx) — don't put all pages in this file.
-function PlaceholderIndex() {
+function LandingPage() {
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
+    <div className="min-h-screen bg-background">
+      <LandingHeader />
+      <HeroSection />
+      <PricingSection />
+      <Footer />
     </div>
   );
-}
-
-function Index() {
-  return <PlaceholderIndex />;
 }
