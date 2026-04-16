@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -15,6 +15,7 @@ export function useSubscription(): UseSubscriptionResult {
   const { user } = useAuth();
   const [status, setStatus] = useState<SubscriptionStatus>(null);
   const [loading, setLoading] = useState(true);
+  const fetchCountRef = useRef(0);
 
   const refetch = useCallback(async (): Promise<SubscriptionStatus> => {
     if (!supabase || !user) {
@@ -24,15 +25,28 @@ export function useSubscription(): UseSubscriptionResult {
     }
 
     setLoading(true);
+    fetchCountRef.current += 1;
+    const fetchId = fetchCountRef.current;
+
     const { data, error } = await supabase
       .from("profiles")
-      .select("subscription_status")
+      .select("subscription_status, updated_at")
       .eq("id", user.id)
-      .single();
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error("[useSubscription] Erro ao buscar status:", error.message);
+    }
 
     const nextStatus = error || !data ? null : (data.subscription_status as SubscriptionStatus);
-    setStatus(nextStatus);
-    setLoading(false);
+
+    if (fetchCountRef.current === fetchId) {
+      setStatus(nextStatus);
+      setLoading(false);
+    }
+
     return nextStatus;
   }, [user]);
 
@@ -53,17 +67,21 @@ export function useSubscription(): UseSubscriptionResult {
     fetchStatus();
 
     const channel = supabase
-      .channel(`profile-${user.id}`)
+      .channel(`profile-sub-${user.id}-${Date.now()}`)
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${user.id}` },
         (payload) => {
           if (!cancelled) {
-            setStatus((payload.new as { subscription_status: SubscriptionStatus }).subscription_status);
+            const newStatus = (payload.new as { subscription_status: SubscriptionStatus }).subscription_status;
+            console.log("[useSubscription] Realtime update recebido:", newStatus);
+            setStatus(newStatus);
           }
         }
       )
-      .subscribe();
+      .subscribe((channelStatus) => {
+        console.log("[useSubscription] Canal realtime:", channelStatus);
+      });
 
     return () => {
       cancelled = true;

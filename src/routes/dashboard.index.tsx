@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
-import { Code2, Blocks, Brain, Rocket, CheckCircle2, Loader2 } from "lucide-react";
+import { useEffect, useMemo, useState, useRef } from "react";
+import { Code2, Blocks, Brain, Rocket, CheckCircle2, Loader2, RefreshCw } from "lucide-react";
 import { useSubscription } from "@/hooks/useSubscription";
+import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/dashboard/")({
   component: DashboardHome,
@@ -17,6 +18,10 @@ const categories = [
 function DashboardHome() {
   const { isActive, refetch } = useSubscription();
   const [checkingCheckout, setCheckingCheckout] = useState(false);
+  const [pollingGaveUp, setPollingGaveUp] = useState(false);
+  const [manualRefetching, setManualRefetching] = useState(false);
+  const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const checkoutSuccess = useMemo(() => {
     if (typeof window === "undefined") return false;
     return new URLSearchParams(window.location.search).get("checkout") === "success";
@@ -27,22 +32,60 @@ function DashboardHome() {
 
     let cancelled = false;
     setCheckingCheckout(true);
+    setPollingGaveUp(false);
 
-    async function pollSubscriptionStatus() {
-      for (let attempt = 0; attempt < 8; attempt += 1) {
-        const status = await refetch();
-        if (cancelled || status === "active") break;
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+    let attempt = 0;
+    const MAX_ATTEMPTS = 15;
+    const INTERVAL_MS = 3000;
+
+    async function poll() {
+      if (cancelled || attempt >= MAX_ATTEMPTS) {
+        if (!cancelled) {
+          setCheckingCheckout(false);
+          setPollingGaveUp(true);
+        }
+        return;
       }
-      if (!cancelled) setCheckingCheckout(false);
+
+      attempt += 1;
+      console.log(`[Zenith] Polling assinatura — tentativa ${attempt}/${MAX_ATTEMPTS}`);
+
+      const status = await refetch();
+      console.log(`[Zenith] Status retornado: ${status}`);
+
+      if (cancelled) return;
+
+      if (status === "active") {
+        setCheckingCheckout(false);
+        setPollingGaveUp(false);
+        if (typeof window !== "undefined") {
+          const url = new URL(window.location.href);
+          url.searchParams.delete("checkout");
+          window.history.replaceState({}, "", url.toString());
+        }
+        return;
+      }
+
+      pollingRef.current = setTimeout(poll, INTERVAL_MS);
     }
 
-    pollSubscriptionStatus();
+    poll();
 
     return () => {
       cancelled = true;
+      if (pollingRef.current) clearTimeout(pollingRef.current);
     };
   }, [checkoutSuccess, isActive, refetch]);
+
+  const handleManualRefetch = async () => {
+    setManualRefetching(true);
+    setPollingGaveUp(false);
+    console.log("[Zenith] Verificação manual do status");
+    const status = await refetch();
+    console.log(`[Zenith] Status após verificação manual: ${status}`);
+    setManualRefetching(false);
+    if (status !== "active") setPollingGaveUp(true);
+  };
 
   return (
     <div>
@@ -50,21 +93,39 @@ function DashboardHome() {
       <p className="text-muted-foreground mb-8">Escolha uma categoria para começar</p>
 
       {checkoutSuccess && (
-        <div className="glass rounded-xl p-5 glow-border-cyan mb-8 max-w-2xl flex items-center gap-3">
-          {isActive ? (
-            <CheckCircle2 className="h-5 w-5 text-neon-cyan shrink-0" />
-          ) : (
-            <Loader2 className="h-5 w-5 text-neon-purple shrink-0 animate-spin" />
-          )}
-          <div>
+        <div className="glass rounded-xl p-5 glow-border-cyan mb-8 max-w-2xl flex items-start gap-3">
+          <div className="shrink-0 mt-0.5">
+            {isActive ? (
+              <CheckCircle2 className="h-5 w-5 text-neon-cyan" />
+            ) : (
+              <Loader2 className={`h-5 w-5 text-neon-purple ${checkingCheckout || manualRefetching ? "animate-spin" : ""}`} />
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
             <p className="font-semibold text-sm">
-              {isActive ? "Pagamento confirmado. Plano Premium ativo." : "Pagamento confirmado. Atualizando seu plano..."}
+              {isActive
+                ? "Pagamento confirmado. Plano Premium ativo."
+                : "Pagamento confirmado. Atualizando seu plano..."}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              {checkingCheckout && !isActive
-                ? "Estamos sincronizando a confirmação do Stripe com sua conta."
-                : "Se o status ainda não aparecer, aguarde alguns segundos e atualize a página."}
+              {isActive
+                ? "Você agora tem acesso completo a todos os recursos do Zenith AI."
+                : checkingCheckout || manualRefetching
+                  ? "Sincronizando confirmação do Stripe com sua conta. Aguarde..."
+                  : "O Stripe ainda está processando. Clique em verificar para tentar novamente."}
             </p>
+            {pollingGaveUp && !isActive && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3 h-8 text-xs gap-1.5"
+                onClick={handleManualRefetch}
+                disabled={manualRefetching}
+              >
+                <RefreshCw className={`h-3 w-3 ${manualRefetching ? "animate-spin" : ""}`} />
+                Verificar agora
+              </Button>
+            )}
           </div>
         </div>
       )}

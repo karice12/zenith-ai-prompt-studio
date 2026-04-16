@@ -55,6 +55,20 @@ function resolvePlanFromInterval(interval: string | null | undefined) {
   return null;
 }
 
+async function resolveUserIdFromCustomer(stripe: Stripe, customerId: string): Promise<string | null> {
+  try {
+    console.log("[webhook] Buscando userId via Stripe customer metadata", { customerId });
+    const customer = await stripe.customers.retrieve(customerId);
+    if (customer.deleted) return null;
+    const userId = (customer as Stripe.Customer).metadata?.userId ?? null;
+    console.log("[webhook] userId via customer metadata:", userId);
+    return userId;
+  } catch (err) {
+    console.error("[webhook] Falha ao buscar customer no Stripe:", err);
+    return null;
+  }
+}
+
 async function applySubscriptionToProfile({
   userId,
   subscription,
@@ -84,7 +98,7 @@ async function applySubscriptionToProfile({
     ? new Date(subscription.current_period_end * 1000).toISOString()
     : null;
 
-  console.log(`[webhook][${eventType}] Dados da assinatura normalizados`, {
+  console.log(`[webhook][${eventType}] Dados normalizados para upsert`, {
     userId,
     subscriptionId: subscription.id,
     subscriptionStatus: subscription.status,
@@ -96,33 +110,28 @@ async function applySubscriptionToProfile({
     endAt,
   });
 
-  console.log(`[webhook][${eventType}] Atualizando perfil para userId=${userId}`, {
+  const payload = {
+    id: userId,
     subscription_status: "active",
-    stripe_customer_id: customer,
+    stripe_customer_id: customer ?? null,
     stripe_subscription_id: subscription.id,
     stripe_price_id: priceId,
     stripe_plan: plan,
     subscription_start_at: startAt,
     subscription_end_at: endAt,
-  });
+  };
+
+  console.log(`[webhook][${eventType}] Executando upsert no Supabase para userId=${userId}`);
 
   const { data, error } = await supabase
     .from("profiles")
-    .update({
-      subscription_status: "active",
-      stripe_customer_id: customer ?? null,
-      stripe_subscription_id: subscription.id,
-      stripe_price_id: priceId,
-      stripe_plan: plan,
-      subscription_start_at: startAt,
-      subscription_end_at: endAt,
-    })
-    .eq("id", userId)
-    .select("id")
+    .upsert(payload, { onConflict: "id" })
+    .select("id, subscription_status")
     .maybeSingle();
 
-  console.log(`[webhook][${eventType}] Resultado do update no Supabase`, {
+  console.log(`[webhook][${eventType}] Resultado do upsert`, {
     updatedProfileId: data?.id ?? null,
+    updatedStatus: data?.subscription_status ?? null,
     hasError: Boolean(error),
     errorCode: error?.code ?? null,
     errorMessage: error?.message ?? null,
@@ -131,16 +140,11 @@ async function applySubscriptionToProfile({
   });
 
   if (error) {
-    console.error(`[webhook][${eventType}] Erro ao atualizar status premium:`, error);
+    console.error(`[webhook][${eventType}] Erro no upsert:`, error);
     throw error;
   }
 
-  if (!data) {
-    throw new Error(`Profile not found for user ${userId}`);
-  }
-
-  console.log(`DB Update Success: User ${userId} is now active`);
-  console.log(`[webhook][${eventType}] Perfil atualizado com sucesso para userId=${userId}`);
+  console.log(`[webhook][${eventType}] Upsert concluído com sucesso para userId=${userId}`);
 }
 
 async function cancelSubscriptionOnProfile(userId: string, eventType: string) {
@@ -158,16 +162,14 @@ async function cancelSubscriptionOnProfile(userId: string, eventType: string) {
     })
     .eq("id", userId);
 
-  console.log(`[webhook][${eventType}] Resultado do cancelamento no Supabase`, {
+  console.log(`[webhook][${eventType}] Resultado do cancelamento`, {
     hasError: Boolean(error),
     errorCode: error?.code ?? null,
     errorMessage: error?.message ?? null,
-    errorDetails: error?.details ?? null,
-    errorHint: error?.hint ?? null,
   });
 
   if (error) {
-    console.error(`[webhook][${eventType}] Erro ao cancelar status premium:`, error);
+    console.error(`[webhook][${eventType}] Erro ao cancelar:`, error);
     throw error;
   }
 
@@ -183,28 +185,25 @@ async function setStatus(userId: string, status: "active" | "inactive" | "past_d
     .update({ subscription_status: status })
     .eq("id", userId);
 
-  console.log(`[webhook][${eventType}] Resultado do update de status no Supabase`, {
+  console.log(`[webhook][${eventType}] Resultado do update de status`, {
     userId,
     status,
     hasError: Boolean(error),
     errorCode: error?.code ?? null,
     errorMessage: error?.message ?? null,
-    errorDetails: error?.details ?? null,
-    errorHint: error?.hint ?? null,
   });
 
   if (error) {
-    console.error(`[webhook][${eventType}] Erro ao atualizar status premium:`, error);
+    console.error(`[webhook][${eventType}] Erro ao atualizar status:`, error);
     throw error;
   }
 }
 
 export async function handleStripeWebhook(request: Request) {
-  console.log("[webhook] Requisição recebida", {
+  console.log("[webhook] ===== Requisição recebida =====", {
     method: request.method,
     url: request.url,
     contentType: request.headers.get("content-type"),
-    userAgent: request.headers.get("user-agent"),
     stripeSignaturePresent: Boolean(request.headers.get("stripe-signature")),
     stripeSignatureLength: request.headers.get("stripe-signature")?.length ?? 0,
     hasSupabaseUrl: hasValue(process.env.VITE_SUPABASE_URL),
@@ -220,13 +219,13 @@ export async function handleStripeWebhook(request: Request) {
 
   const missingEnv = getMissingEnv();
   if (missingEnv.length > 0) {
-    console.error("[webhook] Variáveis de ambiente ausentes:", missingEnv);
+    console.error("[webhook] ERRO: Variáveis de ambiente ausentes:", missingEnv);
     return json({ error: "Webhook configuration incomplete", missingEnv }, 500);
   }
 
   const signature = request.headers.get("stripe-signature");
   if (!signature) {
-    console.error("[webhook] stripe-signature header ausente");
+    console.error("[webhook] ERRO: stripe-signature header ausente");
     return json({ error: "Missing Stripe signature" }, 400);
   }
 
@@ -234,7 +233,7 @@ export async function handleStripeWebhook(request: Request) {
   let rawBody: Buffer;
   try {
     rawBody = Buffer.from(await request.arrayBuffer());
-    console.log("[webhook] Body bruto recebido para validação Stripe", {
+    console.log("[webhook] Body recebido para validação", {
       rawBodyBytes: rawBody.length,
       signaturePreview: `${signature.slice(0, 12)}...`,
       webhookSecretLength: process.env.STRIPE_WEBHOOK_SECRET?.length ?? 0,
@@ -244,14 +243,14 @@ export async function handleStripeWebhook(request: Request) {
       signature,
       process.env.STRIPE_WEBHOOK_SECRET as string
     );
-    console.log("[webhook] Assinatura Stripe validada com sucesso", {
+    console.log("[webhook] Assinatura Stripe válida", {
       eventId: event.id,
       eventType: event.type,
       created: event.created,
       livemode: event.livemode,
     });
   } catch (error) {
-    console.error("[webhook] Falha na verificação da assinatura:", {
+    console.error("[webhook] ERRO na verificação da assinatura:", {
       errorName: error instanceof Error ? error.name : "unknown",
       errorMessage: error instanceof Error ? error.message : String(error),
       signatureLength: signature.length,
@@ -260,13 +259,7 @@ export async function handleStripeWebhook(request: Request) {
     return json({ error: "Invalid signature" }, 400);
   }
 
-  console.log(`[webhook] Evento recebido: ${event.type} (id=${event.id})`, {
-    apiVersion: event.api_version,
-    account: event.account ?? null,
-    pendingWebhooks: event.pending_webhooks,
-    requestId: event.request?.id ?? null,
-    objectType: event.data.object.object,
-  });
+  console.log(`[webhook] Processando evento: ${event.type} (id=${event.id})`);
 
   const stripe = getStripe();
   const obj = event.data.object;
@@ -275,7 +268,8 @@ export async function handleStripeWebhook(request: Request) {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = obj as Stripe.Checkout.Session;
-        const userId = session.metadata?.userId;
+        let userId = session.metadata?.userId ?? null;
+
         console.log("[webhook][checkout.session.completed] Session recebida", {
           sessionId: session.id,
           paymentStatus: session.payment_status,
@@ -284,14 +278,25 @@ export async function handleStripeWebhook(request: Request) {
           customer: session.customer,
           subscription: session.subscription,
           metadata: session.metadata,
-          clientReferenceId: session.client_reference_id,
+          userIdFromMetadata: userId,
         });
-        console.log(`[webhook][checkout.session.completed] userId=${userId}, subscription=${session.subscription}`);
-        if (!userId || !session.subscription) {
-          console.warn("[webhook][checkout.session.completed] userId ou subscription ausente no metadata", {
-            hasUserId: Boolean(userId),
-            hasSubscription: Boolean(session.subscription),
+
+        if (!userId && session.customer) {
+          console.warn("[webhook][checkout.session.completed] userId ausente no metadata — buscando via customer");
+          userId = await resolveUserIdFromCustomer(stripe, session.customer as string);
+        }
+
+        if (!userId) {
+          console.error("[webhook][checkout.session.completed] ERRO: userId não encontrado em nenhuma fonte", {
             metadata: session.metadata,
+            customer: session.customer,
+          });
+          break;
+        }
+
+        if (!session.subscription) {
+          console.error("[webhook][checkout.session.completed] ERRO: subscription ausente na session", {
+            sessionId: session.id,
           });
           break;
         }
@@ -299,10 +304,12 @@ export async function handleStripeWebhook(request: Request) {
         console.log("[webhook][checkout.session.completed] Buscando subscription no Stripe", {
           subscriptionId: session.subscription,
         });
+
         const subscription = await stripe.subscriptions.retrieve(
           session.subscription as string,
           { expand: ["items.data.price"] }
         );
+
         console.log("[webhook][checkout.session.completed] Subscription recuperada", {
           subscriptionId: subscription.id,
           status: subscription.status,
@@ -312,6 +319,7 @@ export async function handleStripeWebhook(request: Request) {
           firstPriceId: subscription.items?.data?.[0]?.price?.id ?? null,
           firstInterval: subscription.items?.data?.[0]?.price?.recurring?.interval ?? null,
         });
+
         await applySubscriptionToProfile({
           userId,
           subscription,
@@ -323,16 +331,21 @@ export async function handleStripeWebhook(request: Request) {
 
       case "customer.subscription.updated": {
         const subscriptionEvent = obj as Stripe.Subscription;
-        const userId = subscriptionEvent.metadata?.userId;
+        let userId = subscriptionEvent.metadata?.userId ?? null;
+
         console.log(`[webhook][customer.subscription.updated] userId=${userId}, status=${subscriptionEvent.status}`, {
           subscriptionId: subscriptionEvent.id,
           customer: subscriptionEvent.customer,
           metadata: subscriptionEvent.metadata,
         });
+
+        if (!userId && subscriptionEvent.customer) {
+          console.warn("[webhook][customer.subscription.updated] userId ausente — buscando via customer");
+          userId = await resolveUserIdFromCustomer(stripe, subscriptionEvent.customer as string);
+        }
+
         if (!userId) {
-          console.warn("[webhook][customer.subscription.updated] userId ausente no metadata", {
-            metadata: subscriptionEvent.metadata,
-          });
+          console.error("[webhook][customer.subscription.updated] ERRO: userId não encontrado");
           break;
         }
 
@@ -361,6 +374,7 @@ export async function handleStripeWebhook(request: Request) {
           subscription: invoice.subscription,
           status: invoice.status,
         });
+
         if (!invoice.subscription) {
           console.warn("[webhook][invoice.payment_succeeded] Invoice sem subscription");
           break;
@@ -370,15 +384,21 @@ export async function handleStripeWebhook(request: Request) {
           invoice.subscription as string,
           { expand: ["items.data.price"] }
         );
-        const userId = subscription.metadata?.userId;
+
+        let userId = subscription.metadata?.userId ?? null;
+
         console.log(`[webhook][invoice.payment_succeeded] userId=${userId}`, {
           subscriptionId: subscription.id,
           metadata: subscription.metadata,
         });
+
+        if (!userId && invoice.customer) {
+          console.warn("[webhook][invoice.payment_succeeded] userId ausente — buscando via customer");
+          userId = await resolveUserIdFromCustomer(stripe, invoice.customer as string);
+        }
+
         if (!userId) {
-          console.warn("[webhook][invoice.payment_succeeded] userId ausente no metadata da subscription", {
-            metadata: subscription.metadata,
-          });
+          console.error("[webhook][invoice.payment_succeeded] ERRO: userId não encontrado");
           break;
         }
 
@@ -399,15 +419,23 @@ export async function handleStripeWebhook(request: Request) {
           subscription: invoice.subscription,
           status: invoice.status,
         });
+
         if (!invoice.subscription) {
           console.warn("[webhook][invoice.payment_failed] Invoice sem subscription");
           break;
         }
 
         const subscription = await stripe.subscriptions.retrieve(invoice.subscription as string);
-        const userId = subscription.metadata?.userId;
-        console.log(`[webhook][invoice.payment_failed] userId=${userId}`);
-        if (!userId) break;
+        let userId = subscription.metadata?.userId ?? null;
+
+        if (!userId && invoice.customer) {
+          userId = await resolveUserIdFromCustomer(stripe, invoice.customer as string);
+        }
+
+        if (!userId) {
+          console.error("[webhook][invoice.payment_failed] ERRO: userId não encontrado");
+          break;
+        }
 
         await setStatus(userId, "past_due", event.type);
         break;
@@ -415,17 +443,21 @@ export async function handleStripeWebhook(request: Request) {
 
       case "customer.subscription.deleted": {
         const subscription = obj as Stripe.Subscription;
-        const userId = subscription.metadata?.userId;
+        let userId = subscription.metadata?.userId ?? null;
+
         console.log(`[webhook][customer.subscription.deleted] userId=${userId}`, {
           subscriptionId: subscription.id,
           status: subscription.status,
           customer: subscription.customer,
           metadata: subscription.metadata,
         });
+
+        if (!userId && subscription.customer) {
+          userId = await resolveUserIdFromCustomer(stripe, subscription.customer as string);
+        }
+
         if (!userId) {
-          console.warn("[webhook][customer.subscription.deleted] userId ausente no metadata", {
-            metadata: subscription.metadata,
-          });
+          console.error("[webhook][customer.subscription.deleted] ERRO: userId não encontrado");
           break;
         }
 
@@ -438,7 +470,7 @@ export async function handleStripeWebhook(request: Request) {
         break;
     }
   } catch (error) {
-    console.error(`[webhook] Erro ao processar evento ${event.type}:`, {
+    console.error(`[webhook] ERRO ao processar evento ${event.type}:`, {
       eventId: event.id,
       eventType: event.type,
       errorName: error instanceof Error ? error.name : "unknown",
@@ -448,7 +480,7 @@ export async function handleStripeWebhook(request: Request) {
     return json({ error: "Database write failed. Stripe will retry." }, 500);
   }
 
-  console.log("[webhook] Evento processado com sucesso", {
+  console.log("[webhook] ===== Evento processado com sucesso =====", {
     eventId: event.id,
     eventType: event.type,
   });
