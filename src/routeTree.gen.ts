@@ -19,6 +19,7 @@ import { Route as DashboardSubscriptionRouteImport } from './routes/dashboard.su
 import { Route as DashboardPromptsRouteImport } from './routes/dashboard.prompts'
 import { Route as DashboardGenerateRouteImport } from './routes/dashboard.generate'
 import { Route as ApiWebhookRouteImport } from './routes/api/webhook'
+import { Route as ApiSyncSubscriptionRouteImport } from './routes/api/sync-subscription'
 import { Route as ApiGenerateRouteImport } from './routes/api/generate'
 import { Route as ApiCheckoutRouteImport } from './routes/api/checkout'
 import { Route as ApiWebhooksStripeRouteImport } from './routes/api/webhooks/stripe'
@@ -73,6 +74,11 @@ const ApiWebhookRoute = ApiWebhookRouteImport.update({
   path: '/api/webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiSyncSubscriptionRoute = ApiSyncSubscriptionRouteImport.update({
+  id: '/api/sync-subscription',
+  path: '/api/sync-subscription',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiGenerateRoute = ApiGenerateRouteImport.update({
   id: '/api/generate',
   path: '/api/generate',
@@ -96,6 +102,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/api/checkout': typeof ApiCheckoutRoute
   '/api/generate': typeof ApiGenerateRoute
+  '/api/sync-subscription': typeof ApiSyncSubscriptionRoute
   '/api/webhook': typeof ApiWebhookRoute
   '/dashboard/generate': typeof DashboardGenerateRoute
   '/dashboard/prompts': typeof DashboardPromptsRoute
@@ -110,6 +117,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/api/checkout': typeof ApiCheckoutRoute
   '/api/generate': typeof ApiGenerateRoute
+  '/api/sync-subscription': typeof ApiSyncSubscriptionRoute
   '/api/webhook': typeof ApiWebhookRoute
   '/dashboard/generate': typeof DashboardGenerateRoute
   '/dashboard/prompts': typeof DashboardPromptsRoute
@@ -126,6 +134,7 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/api/checkout': typeof ApiCheckoutRoute
   '/api/generate': typeof ApiGenerateRoute
+  '/api/sync-subscription': typeof ApiSyncSubscriptionRoute
   '/api/webhook': typeof ApiWebhookRoute
   '/dashboard/generate': typeof DashboardGenerateRoute
   '/dashboard/prompts': typeof DashboardPromptsRoute
@@ -143,6 +152,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/api/checkout'
     | '/api/generate'
+    | '/api/sync-subscription'
     | '/api/webhook'
     | '/dashboard/generate'
     | '/dashboard/prompts'
@@ -157,6 +167,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/api/checkout'
     | '/api/generate'
+    | '/api/sync-subscription'
     | '/api/webhook'
     | '/dashboard/generate'
     | '/dashboard/prompts'
@@ -172,6 +183,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/api/checkout'
     | '/api/generate'
+    | '/api/sync-subscription'
     | '/api/webhook'
     | '/dashboard/generate'
     | '/dashboard/prompts'
@@ -188,6 +200,7 @@ export interface RootRouteChildren {
   SignupRoute: typeof SignupRoute
   ApiCheckoutRoute: typeof ApiCheckoutRoute
   ApiGenerateRoute: typeof ApiGenerateRoute
+  ApiSyncSubscriptionRoute: typeof ApiSyncSubscriptionRoute
   ApiWebhookRoute: typeof ApiWebhookRoute
   ApiWebhooksStripeRoute: typeof ApiWebhooksStripeRoute
 }
@@ -264,6 +277,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/sync-subscription': {
+      id: '/api/sync-subscription'
+      path: '/api/sync-subscription'
+      fullPath: '/api/sync-subscription'
+      preLoaderRoute: typeof ApiSyncSubscriptionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/generate': {
       id: '/api/generate'
       path: '/api/generate'
@@ -315,6 +335,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignupRoute: SignupRoute,
   ApiCheckoutRoute: ApiCheckoutRoute,
   ApiGenerateRoute: ApiGenerateRoute,
+  ApiSyncSubscriptionRoute: ApiSyncSubscriptionRoute,
   ApiWebhookRoute: ApiWebhookRoute,
   ApiWebhooksStripeRoute: ApiWebhooksStripeRoute,
 }

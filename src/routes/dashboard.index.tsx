@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { Code2, Blocks, Brain, Rocket, CheckCircle2, Loader2, RefreshCw } from "lucide-react";
 import { useSubscription } from "@/hooks/useSubscription";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/dashboard/")({
@@ -17,6 +18,7 @@ const categories = [
 
 function DashboardHome() {
   const { isActive, refetch } = useSubscription();
+  const { getToken } = useAuth();
   const [checkingCheckout, setCheckingCheckout] = useState(false);
   const [pollingGaveUp, setPollingGaveUp] = useState(false);
   const [manualRefetching, setManualRefetching] = useState(false);
@@ -26,6 +28,28 @@ function DashboardHome() {
     if (typeof window === "undefined") return false;
     return new URLSearchParams(window.location.search).get("checkout") === "success";
   }, []);
+
+  const syncFromStripe = useCallback(async (): Promise<boolean> => {
+    try {
+      const token = await getToken();
+      if (!token) return false;
+
+      const res = await fetch("/api/sync-subscription", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) return false;
+
+      const data = await res.json().catch(() => null);
+      return data?.status === "active";
+    } catch {
+      return false;
+    }
+  }, [getToken]);
 
   useEffect(() => {
     if (!checkoutSuccess || isActive) return;
@@ -48,14 +72,19 @@ function DashboardHome() {
       }
 
       attempt += 1;
-      console.log(`[Zenith] Polling assinatura — tentativa ${attempt}/${MAX_ATTEMPTS}`);
+      console.log(`[Zenith] Polling — tentativa ${attempt}/${MAX_ATTEMPTS}`);
 
-      const status = await refetch();
-      console.log(`[Zenith] Status retornado: ${status}`);
+      const [dbStatus, stripeSync] = await Promise.all([
+        refetch(),
+        syncFromStripe(),
+      ]);
+
+      console.log(`[Zenith] DB status: ${dbStatus}, Stripe sync: ${stripeSync}`);
 
       if (cancelled) return;
 
-      if (status === "active") {
+      if (dbStatus === "active" || stripeSync) {
+        await refetch();
         setCheckingCheckout(false);
         setPollingGaveUp(false);
         if (typeof window !== "undefined") {
@@ -75,16 +104,15 @@ function DashboardHome() {
       cancelled = true;
       if (pollingRef.current) clearTimeout(pollingRef.current);
     };
-  }, [checkoutSuccess, isActive, refetch]);
+  }, [checkoutSuccess, isActive, refetch, syncFromStripe]);
 
   const handleManualRefetch = async () => {
     setManualRefetching(true);
     setPollingGaveUp(false);
-    console.log("[Zenith] Verificação manual do status");
-    const status = await refetch();
-    console.log(`[Zenith] Status após verificação manual: ${status}`);
+    const [dbStatus, stripeSync] = await Promise.all([refetch(), syncFromStripe()]);
+    if (stripeSync) await refetch();
     setManualRefetching(false);
-    if (status !== "active") setPollingGaveUp(true);
+    if (dbStatus !== "active" && !stripeSync) setPollingGaveUp(true);
   };
 
   return (
@@ -112,7 +140,7 @@ function DashboardHome() {
                 ? "Você agora tem acesso completo a todos os recursos do Zenith AI."
                 : checkingCheckout || manualRefetching
                   ? "Sincronizando confirmação do Stripe com sua conta. Aguarde..."
-                  : "O Stripe ainda está processando. Clique em verificar para tentar novamente."}
+                  : "Clique em verificar para tentar novamente."}
             </p>
             {pollingGaveUp && !isActive && (
               <Button
