@@ -67,4 +67,5 @@ The Vite config exposes `VITE_` environment variables to client code via `import
 - Current Replit dev webhook path: `/api/webhooks/stripe`
 - Legacy webhook path still supported: `/api/webhook`
 - Required secret: `STRIPE_WEBHOOK_SECRET`
-- Webhook writes use `SUPABASE_SERVICE_ROLE_KEY` only in server routes to bypass RLS for subscription status updates.
+- Webhook writes use `SUPABASE_SERVICE_ROLE_KEY` only in server-side webhook routes to bypass RLS for subscription status updates.
+- Checkout routes validate the JWT with the anon key and perform profile/customer operations through a user-scoped Supabase client, not the service role key.

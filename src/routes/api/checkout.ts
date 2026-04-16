@@ -44,12 +44,14 @@ function getSupabaseAuth() {
   );
 }
 
-// Uses service role key — for privileged DB operations
-function getSupabaseAdmin() {
+function getSupabaseUserClient(token: string) {
   return createClient(
     process.env.SUPABASE_URL as string,
-    process.env.SUPABASE_SERVICE_ROLE_KEY as string,
-    { auth: { autoRefreshToken: false, persistSession: false } }
+    (process.env.VITE_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY) as string,
+    {
+      auth: { autoRefreshToken: false, persistSession: false },
+      global: { headers: { Authorization: `Bearer ${token}` } },
+    }
   );
 }
 
@@ -94,13 +96,15 @@ async function findOrCreateStripeCustomer({
   stripe,
   userId,
   email,
+  token,
 }: {
   stripe: Stripe;
   userId: string;
   email: string;
+  token: string;
 }) {
-  const supabaseAdmin = getSupabaseAdmin();
-  const { data: profile, error } = await supabaseAdmin
+  const supabaseUser = getSupabaseUserClient(token);
+  const { data: profile, error } = await supabaseUser
     .from("profiles")
     .select("stripe_customer_id")
     .eq("id", userId)
@@ -116,7 +120,7 @@ async function findOrCreateStripeCustomer({
   }
 
   if (!profile) {
-    const { error: profileError } = await supabaseAdmin
+    const { error: profileError } = await supabaseUser
       .from("profiles")
       .upsert({ id: userId, email, subscription_status: "inactive" }, { onConflict: "id" });
 
@@ -131,7 +135,7 @@ async function findOrCreateStripeCustomer({
     metadata: { userId },
   });
 
-  const { error: updateError } = await supabaseAdmin
+  const { error: updateError } = await supabaseUser
     .from("profiles")
     .update({ email, stripe_customer_id: customer.id })
     .eq("id", userId);
@@ -201,7 +205,7 @@ export const Route = createFileRoute("/api/checkout")({
 
         let customerId: string;
         try {
-          customerId = await findOrCreateStripeCustomer({ stripe, userId, email });
+          customerId = await findOrCreateStripeCustomer({ stripe, userId, email, token });
         } catch (err) {
           console.error("[checkout] Stripe customer falhou:", err);
           return json({ error: "Não foi possível criar o cliente Stripe" }, 500);
