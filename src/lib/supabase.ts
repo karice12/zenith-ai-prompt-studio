@@ -6,7 +6,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 export const isSupabaseConfigured = !!(supabaseUrl && supabaseAnonKey);
 export const supabaseConfigError =
-  "VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY precisam ser configurados nos Secrets do Replit.";
+  "VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY precisam estar configurados no ambiente.";
 
 if (!isSupabaseConfigured) {
   console.warn(`[Zenith AI] ${supabaseConfigError}`);

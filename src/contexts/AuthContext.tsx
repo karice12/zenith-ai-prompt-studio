@@ -19,6 +19,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const clearInvalidSession = async () => {
+    if (!supabase) return;
+    await supabase.auth.signOut({ scope: "local" });
+    setSession(null);
+    setUser(null);
+  };
+
+  const getEmailRedirectTo = () => {
+    if (typeof window !== "undefined") return window.location.origin;
+    return undefined;
+  };
+
   useEffect(() => {
     if (!supabase) {
       setSession(null);
@@ -35,16 +47,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError || !userData.user) {
-        await supabase.auth.signOut();
-        setSession(null);
-        setUser(null);
+      const expiresAt = session.expires_at ? session.expires_at * 1000 : null;
+      const currentSession =
+        expiresAt && expiresAt <= Date.now()
+          ? (await supabase.auth.refreshSession()).data.session
+          : session;
+
+      if (!currentSession) {
+        await clearInvalidSession();
         setLoading(false);
         return;
       }
 
-      setSession(session);
+      const { data: userData, error: userError } = await supabase.auth.getUser(
+        currentSession.access_token
+      );
+      if (userError || !userData.user) {
+        await clearInvalidSession();
+        setLoading(false);
+        return;
+      }
+
+      setSession(currentSession);
       setUser(userData.user);
       setLoading(false);
     });
@@ -71,7 +95,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name: name } },
+      options: {
+        data: { full_name: name },
+        emailRedirectTo: getEmailRedirectTo(),
+      },
     });
 
     if (error) return { error: error.message };
@@ -94,19 +121,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     if (!supabase) return;
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
   };
 
   const getToken = async (): Promise<string | null> => {
     if (!supabase) return null;
     const { data, error } = await supabase.auth.getSession();
-    if (error || !data.session) return null;
-    const { error: userError } = await supabase.auth.getUser();
-    if (userError) {
-      await supabase.auth.signOut();
+    if (error || !data.session) {
+      await clearInvalidSession();
       return null;
     }
-    return data.session.access_token;
+
+    const expiresAt = data.session.expires_at ? data.session.expires_at * 1000 : null;
+    const session =
+      expiresAt && expiresAt <= Date.now()
+        ? (await supabase.auth.refreshSession()).data.session
+        : data.session;
+
+    if (!session) {
+      await clearInvalidSession();
+      return null;
+    }
+
+    const { error: userError } = await supabase.auth.getUser(session.access_token);
+    if (userError) {
+      await clearInvalidSession();
+      return null;
+    }
+    return session.access_token;
   };
 
   return (

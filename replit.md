@@ -38,22 +38,25 @@ A React-based AI prompt engineering dashboard built with TanStack Start (SSR), T
 - **Build:** `npm run build`
 - **Host:** `0.0.0.0` with `allowedHosts: true` for Replit proxy compatibility
 - Missing client Supabase settings now disable auth-dependent features with a clear message instead of crashing the preview.
+- Auth clears invalid local sessions and refreshes expired sessions before API token use to avoid stale cross-domain tokens.
 
 ## Environment Variables Required
 - `VITE_SUPABASE_URL` — Supabase project URL (client-side)
 - `VITE_SUPABASE_ANON_KEY` — Supabase anon key (client-side)
 - `SUPABASE_URL` — Supabase project URL (server-side)
-- `SUPABASE_SERVICE_ROLE_KEY` — Supabase service role key (server-side, keep secret)
+- `SUPABASE_ANON_KEY` — Supabase anon key fallback for server-side auth validation
+- `SUPABASE_SERVICE_ROLE_KEY` — Supabase service role key (server-side only, keep secret)
 - `STRIPE_SECRET_KEY` — Stripe secret key (server-side)
 - `STRIPE_WEBHOOK_SECRET` — Stripe webhook signing secret (server-side)
 - `STRIPE_PRICE_MONTHLY` — (optional) Pre-created Stripe price ID for monthly plan
 - `STRIPE_PRICE_ANNUAL` — (optional) Pre-created Stripe price ID for annual plan
-- `NEXT_PUBLIC_APP_URL` — Public URL of the app (used for Stripe redirect URLs)
+- `NEXT_PUBLIC_APP_URL` — Public URL of the app (used for Stripe redirect URLs when set; Vercel URL envs are also supported)
 - `GEMINI_API_KEY` — Google Gemini API key for prompt generation
 
 ## Vite Config
 Standard TanStack Start + Vite config (migrated from Lovable-specific config).
 Uses `@tanstack/react-start/plugin/vite`, `@tailwindcss/vite`, `vite-tsconfig-paths`, and `@vitejs/plugin-react`.
+The Vite config exposes `VITE_` environment variables to client code via `import.meta.env`.
 
 ## Deployment
 - **Target:** Static site
@@ -64,3 +67,4 @@ Uses `@tanstack/react-start/plugin/vite`, `@tailwindcss/vite`, `vite-tsconfig-pa
 - Current Replit dev webhook path: `/api/webhooks/stripe`
 - Legacy webhook path still supported: `/api/webhook`
 - Required secret: `STRIPE_WEBHOOK_SECRET`
+- Webhook writes use `SUPABASE_SERVICE_ROLE_KEY` only in server routes to bypass RLS for subscription status updates.
