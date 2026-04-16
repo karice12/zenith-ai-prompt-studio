@@ -65,18 +65,7 @@ function getAppUrl(request: Request) {
   return new URL(request.url).origin;
 }
 
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    return JSON.parse(Buffer.from(parts[1], "base64url").toString("utf-8"));
-  } catch {
-    return null;
-  }
-}
-
 async function resolveUserIdFromToken(token: string): Promise<{ userId: string | null; error: string | null }> {
-  // Primary: validate via Supabase using anon key (works as long as frontend auth works)
   try {
     const supabaseAuth = getSupabaseAuth();
     const { data, error } = await supabaseAuth.auth.getUser(token);
@@ -84,25 +73,11 @@ async function resolveUserIdFromToken(token: string): Promise<{ userId: string |
       return { userId: data.user.id, error: null };
     }
     console.error("[checkout] auth.getUser falhou:", error?.message);
+    return { userId: null, error: "Sessão inválida. Faça login novamente." };
   } catch (err) {
     console.error("[checkout] Exceção em auth.getUser:", err);
+    return { userId: null, error: "Não foi possível validar sua sessão." };
   }
-
-  // Fallback: decode JWT locally to extract sub
-  const payload = decodeJwtPayload(token);
-  if (!payload) return { userId: null, error: "Token inválido" };
-
-  const sub = typeof payload.sub === "string" ? payload.sub : null;
-  const exp = typeof payload.exp === "number" ? payload.exp : null;
-
-  if (exp && Date.now() / 1000 > exp) {
-    return { userId: null, error: "Sessão expirada. Faça login novamente." };
-  }
-
-  if (!sub) return { userId: null, error: "Token sem identificador de usuário" };
-
-  console.warn("[checkout] Usando sub do JWT local:", sub);
-  return { userId: sub, error: null };
 }
 
 async function findOrCreateStripeCustomer({
@@ -114,39 +89,46 @@ async function findOrCreateStripeCustomer({
   userId: string;
   email: string;
 }) {
-  // Try to find existing customer via admin DB — non-blocking if fails
-  try {
-    const supabaseAdmin = getSupabaseAdmin();
-    const { data: profile, error } = await supabaseAdmin
-      .from("profiles")
-      .select("stripe_customer_id")
-      .eq("id", userId)
-      .maybeSingle();
+  const supabaseAdmin = getSupabaseAdmin();
+  const { data: profile, error } = await supabaseAdmin
+    .from("profiles")
+    .select("stripe_customer_id")
+    .eq("id", userId)
+    .maybeSingle();
 
-    if (!error && profile?.stripe_customer_id) {
-      return profile.stripe_customer_id as string;
-    }
-    if (error) {
-      console.warn("[checkout] DB lookup falhou (não bloqueante):", error.message);
-    }
-  } catch (err) {
-    console.warn("[checkout] Exceção no DB lookup (não bloqueante):", err);
+  if (error) {
+    console.error("[checkout] DB lookup falhou:", error.message);
+    throw error;
   }
 
-  // Create Stripe customer directly
+  if (profile?.stripe_customer_id) {
+    return profile.stripe_customer_id as string;
+  }
+
+  if (!profile) {
+    const { error: profileError } = await supabaseAdmin
+      .from("profiles")
+      .upsert({ id: userId, email, subscription_status: "inactive" }, { onConflict: "id" });
+
+    if (profileError) {
+      console.error("[checkout] Criação de profile falhou:", profileError.message);
+      throw profileError;
+    }
+  }
+
   const customer = await stripe.customers.create({
     email,
     metadata: { userId },
   });
 
-  // Try to persist — non-blocking
-  try {
-    const supabaseAdmin = getSupabaseAdmin();
-    await supabaseAdmin
-      .from("profiles")
-      .upsert({ id: userId, stripe_customer_id: customer.id }, { onConflict: "id" });
-  } catch (err) {
-    console.warn("[checkout] Falha ao persistir stripe_customer_id (não bloqueante):", err);
+  const { error: updateError } = await supabaseAdmin
+    .from("profiles")
+    .update({ email, stripe_customer_id: customer.id })
+    .eq("id", userId);
+
+  if (updateError) {
+    console.error("[checkout] Falha ao persistir stripe_customer_id:", updateError.message);
+    throw updateError;
   }
 
   return customer.id;

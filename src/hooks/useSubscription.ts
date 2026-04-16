@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -8,12 +8,33 @@ interface UseSubscriptionResult {
   status: SubscriptionStatus;
   isActive: boolean;
   loading: boolean;
+  refetch: () => Promise<SubscriptionStatus>;
 }
 
 export function useSubscription(): UseSubscriptionResult {
   const { user } = useAuth();
   const [status, setStatus] = useState<SubscriptionStatus>(null);
   const [loading, setLoading] = useState(true);
+
+  const refetch = useCallback(async (): Promise<SubscriptionStatus> => {
+    if (!supabase || !user) {
+      setStatus(null);
+      setLoading(false);
+      return null;
+    }
+
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("subscription_status")
+      .eq("id", user.id)
+      .single();
+
+    const nextStatus = error || !data ? null : (data.subscription_status as SubscriptionStatus);
+    setStatus(nextStatus);
+    setLoading(false);
+    return nextStatus;
+  }, [user]);
 
   useEffect(() => {
     if (!supabase || !user) {
@@ -25,17 +46,8 @@ export function useSubscription(): UseSubscriptionResult {
     let cancelled = false;
 
     async function fetchStatus() {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("subscription_status")
-        .eq("id", user!.id)
-        .single();
-
-      if (!cancelled) {
-        setStatus(error || !data ? null : (data.subscription_status as SubscriptionStatus));
-        setLoading(false);
-      }
+      const nextStatus = await refetch();
+      if (!cancelled) setStatus(nextStatus);
     }
 
     fetchStatus();
@@ -57,7 +69,7 @@ export function useSubscription(): UseSubscriptionResult {
       cancelled = true;
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, refetch]);
 
-  return { status, isActive: status === "active", loading };
+  return { status, isActive: status === "active", loading, refetch };
 }

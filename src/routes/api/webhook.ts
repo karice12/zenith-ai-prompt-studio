@@ -84,7 +84,7 @@ async function applySubscriptionToProfile({
     subscription_end_at: endAt,
   });
 
-  const { error, count } = await supabase
+  const { data, error } = await supabase
     .from("profiles")
     .update({
       subscription_status: "active",
@@ -96,34 +96,19 @@ async function applySubscriptionToProfile({
       subscription_end_at: endAt,
     })
     .eq("id", userId)
-    .select("id", { count: "exact", head: true });
+    .select("id")
+    .maybeSingle();
 
   if (error) {
     console.error(`[webhook][${eventType}] Erro ao atualizar status premium:`, error);
     throw error;
   }
 
-  if (count === 0) {
-    console.warn(`[webhook][${eventType}] Nenhum perfil encontrado para userId=${userId}. Tentando upsert...`);
-    const { error: upsertError } = await supabase
-      .from("profiles")
-      .upsert({
-        id: userId,
-        subscription_status: "active",
-        stripe_customer_id: customer ?? null,
-        stripe_subscription_id: subscription.id,
-        stripe_price_id: priceId,
-        stripe_plan: plan,
-        subscription_start_at: startAt,
-        subscription_end_at: endAt,
-      });
-
-    if (upsertError) {
-      console.error(`[webhook][${eventType}] Erro ao upsert status premium:`, upsertError);
-      throw upsertError;
-    }
+  if (!data) {
+    throw new Error(`Profile not found for user ${userId}`);
   }
 
+  console.log(`DB Update Success: User ${userId} is now active`);
   console.log(`[webhook][${eventType}] Perfil atualizado com sucesso para userId=${userId}`);
 }
 
