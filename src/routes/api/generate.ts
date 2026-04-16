@@ -125,9 +125,9 @@ export const Route = createFileRoute("/api/generate")({
 
           let generatedPrompt: string;
           try {
-            const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string);
+            const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string, { apiVersion: "v1" });
             const model = genAI.getGenerativeModel({
-              model: "gemini-1.5-flash",
+              model: "gemini-1.5-flash-latest",
               systemInstruction: SYSTEM_PROMPT,
               generationConfig: {
                 temperature: 0.2,
