@@ -6,6 +6,10 @@ const jsonHeaders = {
   "Content-Type": "application/json",
 };
 
+function hasValue(value: string | undefined) {
+  return Boolean(value && value.trim().length > 0);
+}
+
 function json(data: unknown, status = 200) {
   return Response.json(data, {
     status,
@@ -22,6 +26,12 @@ function getStripe() {
 function getSupabase() {
   const url = process.env.SUPABASE_URL as string;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
+  console.log("[webhook][supabase] Criando client com service_role_key", {
+    hasSupabaseUrl: hasValue(url),
+    supabaseHost: url ? new URL(url).host : null,
+    hasServiceRoleKey: hasValue(key),
+    serviceRoleKeyLength: key?.length ?? 0,
+  });
   if (!url || !key) {
     throw new Error("SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não configurados");
   }
@@ -74,6 +84,18 @@ async function applySubscriptionToProfile({
     ? new Date(subscription.current_period_end * 1000).toISOString()
     : null;
 
+  console.log(`[webhook][${eventType}] Dados da assinatura normalizados`, {
+    userId,
+    subscriptionId: subscription.id,
+    subscriptionStatus: subscription.status,
+    customer,
+    priceId,
+    interval,
+    plan,
+    startAt,
+    endAt,
+  });
+
   console.log(`[webhook][${eventType}] Atualizando perfil para userId=${userId}`, {
     subscription_status: "active",
     stripe_customer_id: customer,
@@ -98,6 +120,15 @@ async function applySubscriptionToProfile({
     .eq("id", userId)
     .select("id")
     .maybeSingle();
+
+  console.log(`[webhook][${eventType}] Resultado do update no Supabase`, {
+    updatedProfileId: data?.id ?? null,
+    hasError: Boolean(error),
+    errorCode: error?.code ?? null,
+    errorMessage: error?.message ?? null,
+    errorDetails: error?.details ?? null,
+    errorHint: error?.hint ?? null,
+  });
 
   if (error) {
     console.error(`[webhook][${eventType}] Erro ao atualizar status premium:`, error);
@@ -127,6 +158,14 @@ async function cancelSubscriptionOnProfile(userId: string, eventType: string) {
     })
     .eq("id", userId);
 
+  console.log(`[webhook][${eventType}] Resultado do cancelamento no Supabase`, {
+    hasError: Boolean(error),
+    errorCode: error?.code ?? null,
+    errorMessage: error?.message ?? null,
+    errorDetails: error?.details ?? null,
+    errorHint: error?.hint ?? null,
+  });
+
   if (error) {
     console.error(`[webhook][${eventType}] Erro ao cancelar status premium:`, error);
     throw error;
@@ -144,6 +183,16 @@ async function setStatus(userId: string, status: "active" | "inactive" | "past_d
     .update({ subscription_status: status })
     .eq("id", userId);
 
+  console.log(`[webhook][${eventType}] Resultado do update de status no Supabase`, {
+    userId,
+    status,
+    hasError: Boolean(error),
+    errorCode: error?.code ?? null,
+    errorMessage: error?.message ?? null,
+    errorDetails: error?.details ?? null,
+    errorHint: error?.hint ?? null,
+  });
+
   if (error) {
     console.error(`[webhook][${eventType}] Erro ao atualizar status premium:`, error);
     throw error;
@@ -151,6 +200,24 @@ async function setStatus(userId: string, status: "active" | "inactive" | "past_d
 }
 
 export async function handleStripeWebhook(request: Request) {
+  console.log("[webhook] Requisição recebida", {
+    method: request.method,
+    url: request.url,
+    contentType: request.headers.get("content-type"),
+    userAgent: request.headers.get("user-agent"),
+    stripeSignaturePresent: Boolean(request.headers.get("stripe-signature")),
+    stripeSignatureLength: request.headers.get("stripe-signature")?.length ?? 0,
+    hasSupabaseUrl: hasValue(process.env.SUPABASE_URL),
+    hasServiceRoleKey: hasValue(process.env.SUPABASE_SERVICE_ROLE_KEY),
+    hasStripeSecretKey: hasValue(process.env.STRIPE_SECRET_KEY),
+    hasStripeWebhookSecret: hasValue(process.env.STRIPE_WEBHOOK_SECRET),
+    runtime: {
+      vercel: hasValue(process.env.VERCEL),
+      vercelUrl: process.env.VERCEL_URL ?? null,
+      nodeEnv: process.env.NODE_ENV ?? null,
+    },
+  });
+
   const missingEnv = getMissingEnv();
   if (missingEnv.length > 0) {
     console.error("[webhook] Variáveis de ambiente ausentes:", missingEnv);
@@ -164,19 +231,42 @@ export async function handleStripeWebhook(request: Request) {
   }
 
   let event: Stripe.Event;
+  let rawBody: Buffer;
   try {
-    const rawBody = Buffer.from(await request.arrayBuffer());
+    rawBody = Buffer.from(await request.arrayBuffer());
+    console.log("[webhook] Body bruto recebido para validação Stripe", {
+      rawBodyBytes: rawBody.length,
+      signaturePreview: `${signature.slice(0, 12)}...`,
+      webhookSecretLength: process.env.STRIPE_WEBHOOK_SECRET?.length ?? 0,
+    });
     event = getStripe().webhooks.constructEvent(
       rawBody,
       signature,
       process.env.STRIPE_WEBHOOK_SECRET as string
     );
+    console.log("[webhook] Assinatura Stripe validada com sucesso", {
+      eventId: event.id,
+      eventType: event.type,
+      created: event.created,
+      livemode: event.livemode,
+    });
   } catch (error) {
-    console.error("[webhook] Falha na verificação da assinatura:", error);
+    console.error("[webhook] Falha na verificação da assinatura:", {
+      errorName: error instanceof Error ? error.name : "unknown",
+      errorMessage: error instanceof Error ? error.message : String(error),
+      signatureLength: signature.length,
+      webhookSecretLength: process.env.STRIPE_WEBHOOK_SECRET?.length ?? 0,
+    });
     return json({ error: "Invalid signature" }, 400);
   }
 
-  console.log(`[webhook] Evento recebido: ${event.type} (id=${event.id})`);
+  console.log(`[webhook] Evento recebido: ${event.type} (id=${event.id})`, {
+    apiVersion: event.api_version,
+    account: event.account ?? null,
+    pendingWebhooks: event.pending_webhooks,
+    requestId: event.request?.id ?? null,
+    objectType: event.data.object.object,
+  });
 
   const stripe = getStripe();
   const obj = event.data.object;
@@ -186,16 +276,42 @@ export async function handleStripeWebhook(request: Request) {
       case "checkout.session.completed": {
         const session = obj as Stripe.Checkout.Session;
         const userId = session.metadata?.userId;
+        console.log("[webhook][checkout.session.completed] Session recebida", {
+          sessionId: session.id,
+          paymentStatus: session.payment_status,
+          status: session.status,
+          mode: session.mode,
+          customer: session.customer,
+          subscription: session.subscription,
+          metadata: session.metadata,
+          clientReferenceId: session.client_reference_id,
+        });
         console.log(`[webhook][checkout.session.completed] userId=${userId}, subscription=${session.subscription}`);
         if (!userId || !session.subscription) {
-          console.warn("[webhook][checkout.session.completed] userId ou subscription ausente no metadata");
+          console.warn("[webhook][checkout.session.completed] userId ou subscription ausente no metadata", {
+            hasUserId: Boolean(userId),
+            hasSubscription: Boolean(session.subscription),
+            metadata: session.metadata,
+          });
           break;
         }
 
+        console.log("[webhook][checkout.session.completed] Buscando subscription no Stripe", {
+          subscriptionId: session.subscription,
+        });
         const subscription = await stripe.subscriptions.retrieve(
           session.subscription as string,
           { expand: ["items.data.price"] }
         );
+        console.log("[webhook][checkout.session.completed] Subscription recuperada", {
+          subscriptionId: subscription.id,
+          status: subscription.status,
+          customer: subscription.customer,
+          metadata: subscription.metadata,
+          itemCount: subscription.items?.data?.length ?? 0,
+          firstPriceId: subscription.items?.data?.[0]?.price?.id ?? null,
+          firstInterval: subscription.items?.data?.[0]?.price?.recurring?.interval ?? null,
+        });
         await applySubscriptionToProfile({
           userId,
           subscription,
@@ -208,9 +324,15 @@ export async function handleStripeWebhook(request: Request) {
       case "customer.subscription.updated": {
         const subscriptionEvent = obj as Stripe.Subscription;
         const userId = subscriptionEvent.metadata?.userId;
-        console.log(`[webhook][customer.subscription.updated] userId=${userId}, status=${subscriptionEvent.status}`);
+        console.log(`[webhook][customer.subscription.updated] userId=${userId}, status=${subscriptionEvent.status}`, {
+          subscriptionId: subscriptionEvent.id,
+          customer: subscriptionEvent.customer,
+          metadata: subscriptionEvent.metadata,
+        });
         if (!userId) {
-          console.warn("[webhook][customer.subscription.updated] userId ausente no metadata");
+          console.warn("[webhook][customer.subscription.updated] userId ausente no metadata", {
+            metadata: subscriptionEvent.metadata,
+          });
           break;
         }
 
@@ -233,16 +355,30 @@ export async function handleStripeWebhook(request: Request) {
 
       case "invoice.payment_succeeded": {
         const invoice = obj as Stripe.Invoice;
-        if (!invoice.subscription) break;
+        console.log("[webhook][invoice.payment_succeeded] Invoice recebida", {
+          invoiceId: invoice.id,
+          customer: invoice.customer,
+          subscription: invoice.subscription,
+          status: invoice.status,
+        });
+        if (!invoice.subscription) {
+          console.warn("[webhook][invoice.payment_succeeded] Invoice sem subscription");
+          break;
+        }
 
         const subscription = await stripe.subscriptions.retrieve(
           invoice.subscription as string,
           { expand: ["items.data.price"] }
         );
         const userId = subscription.metadata?.userId;
-        console.log(`[webhook][invoice.payment_succeeded] userId=${userId}`);
+        console.log(`[webhook][invoice.payment_succeeded] userId=${userId}`, {
+          subscriptionId: subscription.id,
+          metadata: subscription.metadata,
+        });
         if (!userId) {
-          console.warn("[webhook][invoice.payment_succeeded] userId ausente no metadata da subscription");
+          console.warn("[webhook][invoice.payment_succeeded] userId ausente no metadata da subscription", {
+            metadata: subscription.metadata,
+          });
           break;
         }
 
@@ -257,7 +393,16 @@ export async function handleStripeWebhook(request: Request) {
 
       case "invoice.payment_failed": {
         const invoice = obj as Stripe.Invoice;
-        if (!invoice.subscription) break;
+        console.log("[webhook][invoice.payment_failed] Invoice recebida", {
+          invoiceId: invoice.id,
+          customer: invoice.customer,
+          subscription: invoice.subscription,
+          status: invoice.status,
+        });
+        if (!invoice.subscription) {
+          console.warn("[webhook][invoice.payment_failed] Invoice sem subscription");
+          break;
+        }
 
         const subscription = await stripe.subscriptions.retrieve(invoice.subscription as string);
         const userId = subscription.metadata?.userId;
@@ -271,8 +416,18 @@ export async function handleStripeWebhook(request: Request) {
       case "customer.subscription.deleted": {
         const subscription = obj as Stripe.Subscription;
         const userId = subscription.metadata?.userId;
-        console.log(`[webhook][customer.subscription.deleted] userId=${userId}`);
-        if (!userId) break;
+        console.log(`[webhook][customer.subscription.deleted] userId=${userId}`, {
+          subscriptionId: subscription.id,
+          status: subscription.status,
+          customer: subscription.customer,
+          metadata: subscription.metadata,
+        });
+        if (!userId) {
+          console.warn("[webhook][customer.subscription.deleted] userId ausente no metadata", {
+            metadata: subscription.metadata,
+          });
+          break;
+        }
 
         await cancelSubscriptionOnProfile(userId, event.type);
         break;
@@ -283,10 +438,20 @@ export async function handleStripeWebhook(request: Request) {
         break;
     }
   } catch (error) {
-    console.error(`[webhook] Erro ao processar evento ${event.type}:`, error);
+    console.error(`[webhook] Erro ao processar evento ${event.type}:`, {
+      eventId: event.id,
+      eventType: event.type,
+      errorName: error instanceof Error ? error.name : "unknown",
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : null,
+    });
     return json({ error: "Database write failed. Stripe will retry." }, 500);
   }
 
+  console.log("[webhook] Evento processado com sucesso", {
+    eventId: event.id,
+    eventType: event.type,
+  });
   return json({ received: true });
 }
 
