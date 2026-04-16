@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createClient } from "@supabase/supabase-js";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const jsonHeaders = {
   "Content-Type": "application/json",
@@ -125,18 +124,39 @@ export const Route = createFileRoute("/api/generate")({
 
           let generatedPrompt: string;
           try {
-            const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string, { apiVersion: "v1" });
-            const model = genAI.getGenerativeModel({
-              model: "gemini-1.5-flash-latest",
-              systemInstruction: SYSTEM_PROMPT,
-              generationConfig: {
-                temperature: 0.2,
-                maxOutputTokens: 2048,
-              },
+            const apiKey = process.env.GEMINI_API_KEY as string;
+            const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+
+            const geminiResponse = await fetch(geminiUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                system_instruction: {
+                  parts: [{ text: SYSTEM_PROMPT }],
+                },
+                contents: [
+                  {
+                    role: "user",
+                    parts: [{ text: userMessage }],
+                  },
+                ],
+                generationConfig: {
+                  temperature: 0.2,
+                  maxOutputTokens: 2048,
+                },
+              }),
             });
 
-            const result = await model.generateContent(userMessage);
-            generatedPrompt = result.response.text();
+            if (!geminiResponse.ok) {
+              const errBody = await geminiResponse.text();
+              throw new Error(`[${geminiResponse.status}] ${errBody}`);
+            }
+
+            const geminiData = await geminiResponse.json() as {
+              candidates?: { content?: { parts?: { text?: string }[] } }[];
+            };
+            generatedPrompt = geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+            if (!generatedPrompt) throw new Error("Resposta vazia da API Gemini.");
             console.log("[generate] Gemini respondeu com sucesso, tamanho:", generatedPrompt.length);
           } catch (geminiError) {
             const msg = geminiError instanceof Error ? geminiError.message : String(geminiError);
