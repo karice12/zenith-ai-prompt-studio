@@ -24,8 +24,8 @@ function getStripe() {
 }
 
 function getSupabase() {
-  const url = process.env.SUPABASE_URL as string;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
+  const url = process.env.VITE_SUPABASE_URL as string;
+  const key = process.env.VITE_SUPABASE_SERVICE_ROLE_KEY as string;
   console.log("[webhook][supabase] Criando client com service_role_key", {
     hasSupabaseUrl: hasValue(url),
     supabaseHost: url ? new URL(url).host : null,
@@ -33,7 +33,7 @@ function getSupabase() {
     serviceRoleKeyLength: key?.length ?? 0,
   });
   if (!url || !key) {
-    throw new Error("SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não configurados");
+    throw new Error("VITE_SUPABASE_URL ou VITE_SUPABASE_SERVICE_ROLE_KEY não configurados");
   }
   return createClient(url, key, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -42,8 +42,8 @@ function getSupabase() {
 
 function getMissingEnv() {
   return [
-    "SUPABASE_URL",
-    "SUPABASE_SERVICE_ROLE_KEY",
+    "VITE_SUPABASE_URL",
+    "VITE_SUPABASE_SERVICE_ROLE_KEY",
     "STRIPE_SECRET_KEY",
     "STRIPE_WEBHOOK_SECRET",
   ].filter((key) => !process.env[key]);
@@ -207,8 +207,8 @@ export async function handleStripeWebhook(request: Request) {
     userAgent: request.headers.get("user-agent"),
     stripeSignaturePresent: Boolean(request.headers.get("stripe-signature")),
     stripeSignatureLength: request.headers.get("stripe-signature")?.length ?? 0,
-    hasSupabaseUrl: hasValue(process.env.SUPABASE_URL),
-    hasServiceRoleKey: hasValue(process.env.SUPABASE_SERVICE_ROLE_KEY),
+    hasSupabaseUrl: hasValue(process.env.VITE_SUPABASE_URL),
+    hasServiceRoleKey: hasValue(process.env.VITE_SUPABASE_SERVICE_ROLE_KEY),
     hasStripeSecretKey: hasValue(process.env.STRIPE_SECRET_KEY),
     hasStripeWebhookSecret: hasValue(process.env.STRIPE_WEBHOOK_SECRET),
     runtime: {

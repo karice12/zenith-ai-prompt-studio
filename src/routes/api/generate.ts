@@ -17,10 +17,6 @@ function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: jsonHeaders });
 }
 
-function getAnonKey() {
-  return process.env.VITE_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY;
-}
-
 function getAuthToken(request: Request) {
   const authHeader = request.headers.get("authorization");
   if (!authHeader?.startsWith("Bearer ")) return null;
@@ -28,13 +24,13 @@ function getAuthToken(request: Request) {
 }
 
 function getSupabaseAuth() {
-  return createClient(process.env.SUPABASE_URL as string, getAnonKey() as string, {
+  return createClient(process.env.VITE_SUPABASE_URL as string, process.env.VITE_SUPABASE_ANON_KEY as string, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 }
 
 function getSupabaseUserClient(token: string) {
-  return createClient(process.env.SUPABASE_URL as string, getAnonKey() as string, {
+  return createClient(process.env.VITE_SUPABASE_URL as string, process.env.VITE_SUPABASE_ANON_KEY as string, {
     auth: { autoRefreshToken: false, persistSession: false },
     global: { headers: { Authorization: `Bearer ${token}` } },
   });
@@ -42,8 +38,8 @@ function getSupabaseUserClient(token: string) {
 
 function getMissingEnv() {
   return [
-    "SUPABASE_URL",
-    !getAnonKey() && "SUPABASE_ANON_KEY",
+    "VITE_SUPABASE_URL",
+    "VITE_SUPABASE_ANON_KEY",
     "GEMINI_API_KEY",
   ].filter((key): key is string => Boolean(key && !process.env[key]));
 }

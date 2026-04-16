@@ -38,16 +38,16 @@ function getStripe() {
 // Uses anon key — works for auth.getUser(jwt) validation
 function getSupabaseAuth() {
   return createClient(
-    process.env.SUPABASE_URL as string,
-    (process.env.VITE_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY) as string,
+    process.env.VITE_SUPABASE_URL as string,
+    process.env.VITE_SUPABASE_ANON_KEY as string,
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
 }
 
 function getSupabaseUserClient(token: string) {
   return createClient(
-    process.env.SUPABASE_URL as string,
-    (process.env.VITE_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY) as string,
+    process.env.VITE_SUPABASE_URL as string,
+    process.env.VITE_SUPABASE_ANON_KEY as string,
     {
       auth: { autoRefreshToken: false, persistSession: false },
       global: { headers: { Authorization: `Bearer ${token}` } },
@@ -158,13 +158,13 @@ export const Route = createFileRoute("/api/checkout")({
         }),
 
       POST: async ({ request }) => {
-        const supabaseUrl = process.env.SUPABASE_URL;
-        const anonKey = process.env.VITE_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY;
+        const supabaseUrl = process.env.VITE_SUPABASE_URL;
+        const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
         const stripeKey = process.env.STRIPE_SECRET_KEY;
 
         if (!supabaseUrl || !anonKey || !stripeKey) {
           const missing = [
-            !supabaseUrl && "SUPABASE_URL",
+            !supabaseUrl && "VITE_SUPABASE_URL",
             !anonKey && "VITE_SUPABASE_ANON_KEY",
             !stripeKey && "STRIPE_SECRET_KEY",
           ].filter(Boolean);
