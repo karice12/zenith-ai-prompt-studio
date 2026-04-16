@@ -16,6 +16,7 @@ A React-based AI prompt engineering dashboard built with TanStack Start (SSR), T
 - `src/routes/` — File-based routes (root, login, signup, dashboard and nested routes)
 - `src/routes/api/checkout.ts` — TanStack Start server route for Stripe checkout sessions
 - `src/routes/api/webhook.ts` — TanStack Start server route for Stripe webhook subscription updates
+- `src/routes/api/webhooks/stripe.ts` — Alias route for Stripe webhook endpoint compatibility
 - `src/components/` — Reusable UI components (shadcn/ui in `ui/`, feature components at root)
 - `src/hooks/` — Custom React hooks
 - `src/lib/` — Utilities (Supabase client, Tailwind class merging)
@@ -58,3 +59,8 @@ Uses `@tanstack/react-start/plugin/vite`, `@tailwindcss/vite`, `vite-tsconfig-pa
 - **Target:** Static site
 - **Build command:** `npm run build`
 - **Public dir:** `dist/client`
+
+## Stripe Webhook
+- Current Replit dev webhook path: `/api/webhooks/stripe`
+- Legacy webhook path still supported: `/api/webhook`
+- Required secret: `STRIPE_WEBHOOK_SECRET`

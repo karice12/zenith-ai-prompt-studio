@@ -7,6 +7,12 @@ CREATE TABLE IF NOT EXISTS profiles (
   email TEXT NOT NULL,
   subscription_status TEXT NOT NULL DEFAULT 'inactive'
     CHECK (subscription_status IN ('active', 'inactive', 'past_due', 'cancelled')),
+  stripe_customer_id TEXT,
+  stripe_subscription_id TEXT,
+  stripe_price_id TEXT,
+  stripe_plan TEXT,
+  subscription_start_at TIMESTAMPTZ,
+  subscription_end_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
