@@ -78,7 +78,11 @@ function GeneratePage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setApiError(data.error || "Erro ao gerar prompt.");
+        const missing: string[] = data.missingEnv ?? [];
+        const errorMsg = missing.length > 0
+          ? `Variáveis de ambiente ausentes no servidor: ${missing.join(", ")}. Configure-as no painel do Vercel e faça um novo deploy.`
+          : data.error || "Erro ao gerar prompt.";
+        setApiError(errorMsg);
         setGenerating(false);
         return;
       }
