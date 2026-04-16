@@ -131,13 +131,10 @@ export const Route = createFileRoute("/api/generate")({
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                system_instruction: {
-                  parts: [{ text: SYSTEM_PROMPT }],
-                },
                 contents: [
                   {
                     role: "user",
-                    parts: [{ text: userMessage }],
+                    parts: [{ text: `${SYSTEM_PROMPT}\n\n${userMessage}` }],
                   },
                 ],
                 generationConfig: {
