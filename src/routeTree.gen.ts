@@ -21,6 +21,7 @@ import { Route as DashboardGenerateRouteImport } from './routes/dashboard.genera
 import { Route as ApiWebhookRouteImport } from './routes/api/webhook'
 import { Route as ApiSyncSubscriptionRouteImport } from './routes/api/sync-subscription'
 import { Route as ApiGenerateRouteImport } from './routes/api/generate'
+import { Route as ApiGeminiCheckRouteImport } from './routes/api/gemini-check'
 import { Route as ApiCheckoutRouteImport } from './routes/api/checkout'
 import { Route as ApiWebhooksStripeRouteImport } from './routes/api/webhooks/stripe'
 
@@ -84,6 +85,11 @@ const ApiGenerateRoute = ApiGenerateRouteImport.update({
   path: '/api/generate',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiGeminiCheckRoute = ApiGeminiCheckRouteImport.update({
+  id: '/api/gemini-check',
+  path: '/api/gemini-check',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCheckoutRoute = ApiCheckoutRouteImport.update({
   id: '/api/checkout',
   path: '/api/checkout',
@@ -101,6 +107,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/api/checkout': typeof ApiCheckoutRoute
+  '/api/gemini-check': typeof ApiGeminiCheckRoute
   '/api/generate': typeof ApiGenerateRoute
   '/api/sync-subscription': typeof ApiSyncSubscriptionRoute
   '/api/webhook': typeof ApiWebhookRoute
@@ -116,6 +123,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/api/checkout': typeof ApiCheckoutRoute
+  '/api/gemini-check': typeof ApiGeminiCheckRoute
   '/api/generate': typeof ApiGenerateRoute
   '/api/sync-subscription': typeof ApiSyncSubscriptionRoute
   '/api/webhook': typeof ApiWebhookRoute
@@ -133,6 +141,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/api/checkout': typeof ApiCheckoutRoute
+  '/api/gemini-check': typeof ApiGeminiCheckRoute
   '/api/generate': typeof ApiGenerateRoute
   '/api/sync-subscription': typeof ApiSyncSubscriptionRoute
   '/api/webhook': typeof ApiWebhookRoute
@@ -151,6 +160,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/api/checkout'
+    | '/api/gemini-check'
     | '/api/generate'
     | '/api/sync-subscription'
     | '/api/webhook'
@@ -166,6 +176,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/api/checkout'
+    | '/api/gemini-check'
     | '/api/generate'
     | '/api/sync-subscription'
     | '/api/webhook'
@@ -182,6 +193,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/api/checkout'
+    | '/api/gemini-check'
     | '/api/generate'
     | '/api/sync-subscription'
     | '/api/webhook'
@@ -199,6 +211,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
   ApiCheckoutRoute: typeof ApiCheckoutRoute
+  ApiGeminiCheckRoute: typeof ApiGeminiCheckRoute
   ApiGenerateRoute: typeof ApiGenerateRoute
   ApiSyncSubscriptionRoute: typeof ApiSyncSubscriptionRoute
   ApiWebhookRoute: typeof ApiWebhookRoute
@@ -291,6 +304,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiGenerateRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/gemini-check': {
+      id: '/api/gemini-check'
+      path: '/api/gemini-check'
+      fullPath: '/api/gemini-check'
+      preLoaderRoute: typeof ApiGeminiCheckRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/checkout': {
       id: '/api/checkout'
       path: '/api/checkout'
@@ -334,6 +354,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
   ApiCheckoutRoute: ApiCheckoutRoute,
+  ApiGeminiCheckRoute: ApiGeminiCheckRoute,
   ApiGenerateRoute: ApiGenerateRoute,
   ApiSyncSubscriptionRoute: ApiSyncSubscriptionRoute,
   ApiWebhookRoute: ApiWebhookRoute,
