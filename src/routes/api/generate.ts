@@ -125,16 +125,19 @@ export const Route = createFileRoute("/api/generate")({
           let generatedPrompt: string;
           try {
             const apiKey = process.env.GEMINI_API_KEY as string;
-            const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+            const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
             const geminiResponse = await fetch(geminiUrl, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
+                system_instruction: {
+                  parts: [{ text: SYSTEM_PROMPT }],
+                },
                 contents: [
                   {
                     role: "user",
-                    parts: [{ text: `${SYSTEM_PROMPT}\n\n${userMessage}` }],
+                    parts: [{ text: userMessage }],
                   },
                 ],
                 generationConfig: {
