@@ -15,6 +15,7 @@ A React-based AI prompt engineering dashboard built with TanStack Start (SSR), T
 ## Project Structure
 - `src/routes/` — File-based routes (root, login, signup, dashboard and nested routes)
 - `src/routes/api/checkout.ts` — TanStack Start server route for Stripe checkout sessions
+- `src/routes/api/generate.ts` — TanStack Start server route for Gemini prompt generation
 - `src/routes/api/webhook.ts` — TanStack Start server route for Stripe webhook subscription updates
 - `src/routes/api/webhooks/stripe.ts` — Alias route for Stripe webhook endpoint compatibility
 - `src/components/` — Reusable UI components (shadcn/ui in `ui/`, feature components at root)
@@ -22,6 +23,7 @@ A React-based AI prompt engineering dashboard built with TanStack Start (SSR), T
 - `src/lib/` — Utilities (Supabase client, Tailwind class merging)
 - `src/styles.css` — Global styles and Tailwind imports
 - `src/routeTree.gen.ts` — Auto-generated route tree (do not edit manually)
+- `vercel.json` — Vercel deployment configuration
 
 ## Key Routes
 - `/` — Landing page
@@ -54,18 +56,21 @@ A React-based AI prompt engineering dashboard built with TanStack Start (SSR), T
 - `GEMINI_API_KEY` — Google Gemini API key for prompt generation
 
 ## Vite Config
-Standard TanStack Start + Vite config (migrated from Lovable-specific config).
-Uses `@tanstack/react-start/plugin/vite`, `@tailwindcss/vite`, `vite-tsconfig-paths`, and `@vitejs/plugin-react`.
+Standard TanStack Start + Vite config for Vercel SSR.
+Uses `@tanstack/react-start/plugin/vite`, Nitro, `@tailwindcss/vite`, `vite-tsconfig-paths`, and `@vitejs/plugin-react`.
 The Vite config exposes `VITE_` environment variables to client code via `import.meta.env`.
 
 ## Deployment
-- **Target:** Static site
+- **Target:** Vercel SSR via Nitro output
 - **Build command:** `npm run build`
-- **Public dir:** `dist/client`
+- **Vercel config:** `vercel.json` sets framework to custom and uses `npm ci` + `npm run build`
+- **Output:** Nitro generates Vercel-compatible output under `.vercel/output`
+- Legacy Vercel functions in the root `api/` directory were removed so all `/api/*` routes run through TanStack Start consistently.
 
 ## Stripe Webhook
-- Current Replit dev webhook path: `/api/webhooks/stripe`
+- Current webhook path: `/api/webhooks/stripe`
 - Legacy webhook path still supported: `/api/webhook`
 - Required secret: `STRIPE_WEBHOOK_SECRET`
 - Webhook writes use `SUPABASE_SERVICE_ROLE_KEY` only in server-side webhook routes to bypass RLS for subscription status updates.
 - Checkout routes validate the JWT with the anon key and perform profile/customer operations through a user-scoped Supabase client, not the service role key.
+- Generate routes validate the JWT with the anon key and perform profile/history operations through a user-scoped Supabase client.

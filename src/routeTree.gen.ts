@@ -19,6 +19,7 @@ import { Route as DashboardSubscriptionRouteImport } from './routes/dashboard.su
 import { Route as DashboardPromptsRouteImport } from './routes/dashboard.prompts'
 import { Route as DashboardGenerateRouteImport } from './routes/dashboard.generate'
 import { Route as ApiWebhookRouteImport } from './routes/api/webhook'
+import { Route as ApiGenerateRouteImport } from './routes/api/generate'
 import { Route as ApiCheckoutRouteImport } from './routes/api/checkout'
 import { Route as ApiWebhooksStripeRouteImport } from './routes/api/webhooks/stripe'
 
@@ -72,6 +73,11 @@ const ApiWebhookRoute = ApiWebhookRouteImport.update({
   path: '/api/webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiGenerateRoute = ApiGenerateRouteImport.update({
+  id: '/api/generate',
+  path: '/api/generate',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCheckoutRoute = ApiCheckoutRouteImport.update({
   id: '/api/checkout',
   path: '/api/checkout',
@@ -89,6 +95,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/api/checkout': typeof ApiCheckoutRoute
+  '/api/generate': typeof ApiGenerateRoute
   '/api/webhook': typeof ApiWebhookRoute
   '/dashboard/generate': typeof DashboardGenerateRoute
   '/dashboard/prompts': typeof DashboardPromptsRoute
@@ -102,6 +109,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/api/checkout': typeof ApiCheckoutRoute
+  '/api/generate': typeof ApiGenerateRoute
   '/api/webhook': typeof ApiWebhookRoute
   '/dashboard/generate': typeof DashboardGenerateRoute
   '/dashboard/prompts': typeof DashboardPromptsRoute
@@ -117,6 +125,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/api/checkout': typeof ApiCheckoutRoute
+  '/api/generate': typeof ApiGenerateRoute
   '/api/webhook': typeof ApiWebhookRoute
   '/dashboard/generate': typeof DashboardGenerateRoute
   '/dashboard/prompts': typeof DashboardPromptsRoute
@@ -133,6 +142,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/api/checkout'
+    | '/api/generate'
     | '/api/webhook'
     | '/dashboard/generate'
     | '/dashboard/prompts'
@@ -146,6 +156,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/api/checkout'
+    | '/api/generate'
     | '/api/webhook'
     | '/dashboard/generate'
     | '/dashboard/prompts'
@@ -160,6 +171,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/api/checkout'
+    | '/api/generate'
     | '/api/webhook'
     | '/dashboard/generate'
     | '/dashboard/prompts'
@@ -175,6 +187,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
   ApiCheckoutRoute: typeof ApiCheckoutRoute
+  ApiGenerateRoute: typeof ApiGenerateRoute
   ApiWebhookRoute: typeof ApiWebhookRoute
   ApiWebhooksStripeRoute: typeof ApiWebhooksStripeRoute
 }
@@ -251,6 +264,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/generate': {
+      id: '/api/generate'
+      path: '/api/generate'
+      fullPath: '/api/generate'
+      preLoaderRoute: typeof ApiGenerateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/checkout': {
       id: '/api/checkout'
       path: '/api/checkout'
@@ -294,6 +314,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
   ApiCheckoutRoute: ApiCheckoutRoute,
+  ApiGenerateRoute: ApiGenerateRoute,
   ApiWebhookRoute: ApiWebhookRoute,
   ApiWebhooksStripeRoute: ApiWebhooksStripeRoute,
 }
