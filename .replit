@@ -41,6 +41,6 @@ publicDir = "dist/client"
 [userenv]
 
 [userenv.shared]
-NEXT_PUBLIC_APP_URL = "https://895e5a36-5656-4941-a1f3-ef1434657334-00-10t8yqvwwwg35.kirk.replit.dev"
+NEXT_PUBLIC_APP_URL = "https://22075750-3617-45e9-9797-6b9e76d70615-00-3jto6zuxd0fao.picard.replit.dev"
 SUPABASE_URL = "https://wndpkohsvfngkimmcvhr.supabase.co"
 VITE_SUPABASE_URL = "https://wndpkohsvfngkimmcvhr.supabase.co"

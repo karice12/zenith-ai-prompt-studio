@@ -60,6 +60,10 @@ function getAuthToken(request: Request) {
 }
 
 function getAppUrl(request: Request) {
+  if (process.env.REPLIT_DEV_DOMAIN) {
+    return new URL(request.url).origin;
+  }
+
   const configured = process.env.NEXT_PUBLIC_APP_URL;
   if (configured) return configured.replace(/\/$/, "");
   return new URL(request.url).origin;

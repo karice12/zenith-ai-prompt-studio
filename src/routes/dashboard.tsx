@@ -11,8 +11,17 @@ export const Route = createFileRoute("/dashboard")({
     if (!supabase) {
       throw redirect({ to: "/login" });
     }
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (error) {
+      await supabase.auth.signOut();
+      throw redirect({ to: "/login" });
+    }
     if (!session) {
+      throw redirect({ to: "/login" });
+    }
+    const { error: userError } = await supabase.auth.getUser();
+    if (userError) {
+      await supabase.auth.signOut();
       throw redirect({ to: "/login" });
     }
   },

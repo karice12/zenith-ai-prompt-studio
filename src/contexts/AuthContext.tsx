@@ -27,9 +27,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      if (error || !session) {
+        setSession(null);
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError || !userData.user) {
+        await supabase.auth.signOut();
+        setSession(null);
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
       setSession(session);
-      setUser(session?.user ?? null);
+      setUser(userData.user);
       setLoading(false);
     });
 
@@ -85,6 +101,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!supabase) return null;
     const { data, error } = await supabase.auth.getSession();
     if (error || !data.session) return null;
+    const { error: userError } = await supabase.auth.getUser();
+    if (userError) {
+      await supabase.auth.signOut();
+      return null;
+    }
     return data.session.access_token;
   };
 
